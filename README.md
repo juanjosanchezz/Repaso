@@ -4,16 +4,19 @@ App de estudio que vive como **artifact de Claude**: la alumna sube lo que le ma
 
 ## Qué hace
 
-- **Acceso**: pantalla de bienvenida, inicio de sesión y registro en 4 pasos (cuenta → qué estudias → asignaturas → manera de estudiar y color).
-- **Asignaturas y temas**: subida de PDF (también escaneados, con OCR), Word, PowerPoint, texto y fotos. Claude reparte los archivos por temas.
-- **Material**: apuntes, esquema, mapa mental, explicación paso a paso, chuleta exprés, flashcards con repaso espaciado, test, modelo de examen con simulacro cronometrado, examen global (más peso en los temas flojos) y plan de estudio.
-- **Maneras de estudiar**: Apuntes y ya · Visual · Practicando · Memorizando · Que me lo expliquen · Completo · Exprés para mañana.
-- **Calendario**: exámenes (tipo, temas, notas del profe) y entregas de tareas. Después del examen se apunta la nota real.
-- **Tareas**: deberes, trabajos, presentaciones, lecturas… con pasos, adjuntos y ayuda de Claude (dividir en pasos, guion de presentación, índice del trabajo, plan de entrega).
-- **Progreso**: racha, calendario de actividad, aciertos por asignatura, notas reales y temas que más cuestan.
-- **Avisos**: en la app la víspera, y en Google Calendar si la usuaria lo tiene conectado.
-- **Compartir**: un código para pasar material a compañeros.
-- **Personalizar**: color, tamaño de letra, secciones del inicio, tarjetas nuevas al día y hora del aviso.
+- **Enfocada en la PAU**: en 2º de Bachillerato todo sigue el modelo de la PAU de su comunidad (estructura, tipos de pregunta, criterios de corrección). Página **PAU** con cuenta atrás, plan hasta la PAU, guía de la PAU por asignatura, simulacros y datos reales de cada asignatura. En ESO/1º usa los criterios LOMLOE; en universidad, la carrera y la guía docente.
+- **Especializada en cada asignatura**: detecta el tipo (Filosofía, Historia, Arte, Geografía, Lengua, idiomas, Latín y Griego, Matemáticas, Física, Química, Biología, Economía, Dibujo) y ofrece su kit: ficha de autor, relacionar autores, comentario de texto, de fuente, de obra o de mapa, análisis sintáctico, writing, reading, traducción, problemas con corrección, preguntas de razonamiento, formulario, problemas resueltos, conceptos clave, línea del tiempo… El tipo se puede cambiar a mano.
+- **Material**: apuntes completos (con el modelo más capaz), esquema, mapa mental, explicación paso a paso, chuleta, flashcards con repaso espaciado, tests **sin límite** (más preguntas sin repetir y modo sin fin), modelo de examen con simulacro cronometrado, examen global y plan de estudio. "Pedir cambios" y "Deshacer" en cualquier material.
+- **Presentaciones para clase**: diapositivas con lo que decir en cada una, modo presentar a pantalla completa y exportación a **PowerPoint**. También desde una tarea de tipo Presentación.
+- **Chats en carpetas que se acuerdan**: conversaciones guardadas y organizadas en carpetas, por asignatura o generales. El chat conoce sus exámenes, tareas y temas flojos, y cuando le cuenta algo **lo apunta**: examen en el calendario, tarea en la lista o un recuerdo que usa siempre (visible y borrable en Personalizar).
+- **Realista y objetivo**: todas las instrucciones a Claude piden notas sin regalar, errores concretos, no inventar y avisar de lo que puede estar desactualizado.
+- **Tareas** con pasos, adjuntos, ayuda de Claude y recordatorios en Google Calendar (a elegir: el día antes, 2 h antes…).
+- **Calendario** de exámenes y entregas con nota real; **Progreso** con racha y temas flojos; **compartir** material con un código; **Personalizar** (color, letra, inicio, modo ahorro).
+
+### Límites que no dependen de la app
+
+- **Buscar en Google**: un artifact no puede navegar por internet. Claude responde con lo que sabe y con los apuntes, y avisa cuando algo (fechas de la PAU, cambios de este curso) hay que comprobarlo en la web oficial.
+- **Ilimitado y gratis**: cada persona usa su propia cuenta de Claude. Con el plan gratuito funciona dentro de sus límites; el modo ahorro hace que dure más. Una versión propia sin cuenta de Claude tendría que pagar la API.
 
 ## Estructura
 
@@ -41,16 +44,16 @@ CHANGELOG.md         Historial de versiones
 }
 ```
 
-Para usarla, hay que compartirla **por invitación de email con permiso de Colaborador**. Con Google Calendar declarado no se permite enlace público. Cada usuaria solo ve sus propios datos (`data/users/<id>/`); el material compartido va a `shared/<id>/items/<código>`.
+**Cómo compartirla** (cuenta personal de Claude): invita a cada persona **por email con permiso de Editor** y no actives el enlace público. Quien entra desde fuera de tu organización con un enlace público o como Lector solo puede leer, así que no podría guardar nada. Cada usuaria ve solo sus datos (`data/users/<id>/`); el material compartido va a `shared/<id>/items/<código>`. La base de datos de un artifact admite 25.000 documentos en total: da para un grupo de amigas, no para un lanzamiento abierto.
 
 ## Probar
 
 ```bash
 pip install playwright && playwright install chromium
-python3 test/e2e.py          # 102 comprobaciones; capturas en una carpeta temporal (E2E_OUT para elegirla)
+python3 test/e2e.py          # 165 comprobaciones; capturas en una carpeta temporal (E2E_OUT para elegirla)
 ```
 
-La prueba no usa red: el runtime de Claude y las librerías (pdf.js, mammoth, JSZip, html2pdf, marked, DOMPurify) se sustituyen por imitaciones con la misma interfaz. La lectura real de PDF/Word y la generación real de PDF se comprueban a mano en Claude.
+La prueba no usa red: el runtime de Claude (incluidas las herramientas del chat) y las librerías (pdf.js, mammoth, JSZip, html2pdf, PptxGenJS, marked, DOMPurify) se sustituyen por imitaciones con la misma interfaz. La lectura real de PDF/Word, la generación real de PDF y PowerPoint y Google Calendar se comprueban a mano en Claude.
 
 ## Lanzamiento fuera de Claude
 

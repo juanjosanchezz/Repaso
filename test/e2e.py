@@ -25,7 +25,7 @@ SKELETON = ('<!doctype html><html><head><meta charset=utf8><meta name=viewport c
             '[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>')
 
 def stub_for(url):
-    for key, frag in [("pdf.worker", "pdfWorker"), ("pdf.min", "pdf"), ("marked", "marked"), ("purify", "purify"), ("mammoth", "mammoth"), ("jszip", "jszip"), ("html2pdf", "html2pdf")]:
+    for key, frag in [("pdf.worker", "pdfWorker"), ("pdf.min", "pdf"), ("marked", "marked"), ("purify", "purify"), ("mammoth", "mammoth"), ("jszip", "jszip"), ("html2pdf", "html2pdf"), ("pptxgen", "pptx")]:
         if key in url: return STUBS[frag]
     return None
 
@@ -46,6 +46,7 @@ def main():
     mk("foto-apuntes.png", b"\x89PNG\r\n\x1a\n" + b"0" * 64)
     mk("enunciado.txt", "Presentación de 10 minutos sobre la Segunda República, en grupo.".encode())
     mk("viejo.doc", b"old")
+    mk("platon.txt", ("Tema 1 · Platón. La teoría de las Ideas, el mito de la caverna, el dualismo antropológico y la ciudad ideal. " * 30).encode())
 
     with sync_playwright() as p:
         b = p.chromium.launch()
@@ -264,6 +265,17 @@ def main():
         click('#task-form button[type=submit]'); W(300)
         tks = coll("tasks"); pres = [v for v in tks.values() if v["title"].startswith("Presentación")][0]
         check("tarea con pasos, adjunto y ayuda", len(pres["checklist"]) == 4 and pres["fileCount"] == 1 and pres["help"] and pres["checklist"][0]["done"], json.dumps(pres)[:300])
+        click(f'[data-action=task-open]', [i for i, t in enumerate(pg.locator('[data-action=task-open]').all_inner_texts()) if "Presentación" in t][0])
+        click('[data-action=tk-help][data-mode=slides]')
+        check("crea diapositivas para la tarea", wait_for(lambda: pg.locator('[data-action=tk-deck]').count() == 1, 5000))
+        check("diapositivas guardadas en la tarea", any(len((v.get("deck") or {}).get("slides", [])) == 5 for v in coll("tasks").values()))
+        click('[data-action=tk-deck]')
+        check("abre las diapositivas", pg.locator(".viewer .slide").count() >= 2 and "1 / 5" in pg.inner_text("#deck-body"))
+        click('.viewer [data-action=pptx]'); W(400)
+        dl = pg.evaluate("window.__mock.calls.downloads")
+        check("exporta a PowerPoint", dl and dl[-1]["filename"].endswith(".pptx") and pg.evaluate("(window.__pptx||[]).length") == 5, json.dumps(dl[-1:]))
+        check("notas del orador en el PowerPoint", pg.evaluate("(window.__pptx||[]).some(s=>s.notes==='Explica los dos mundos.')"))
+        click('.viewer [data-action=close-viewer]')
         click('[data-action=task-toggle]', 0)
         check("marcar como hecha", wait_for(lambda: any(v.get("status") == "done" for v in coll("tasks").values())))
         click('[data-action=task-showdone]'); check("muestra hechas", pg.locator(".task.done").count() >= 1)
@@ -298,8 +310,14 @@ def main():
         check("progreso con notas reales", "Notas de tus exámenes" in text() and "Examen real" in text())
         shot("12-stats")
         click('[data-action=open-subject]', 0); click('[data-action=subj-tab][data-tab=chat]')
+        click('#r-tab [data-action=chat-new]')
         pg.fill("#chat-input", "¿Qué es el turnismo?"); pg.press("#chat-input", "Enter")
         check("chat responde", wait_for(lambda: pg.locator(".msg.ai .md h2").count() > 0 or "Apuntes" in pg.inner_text("#r-chat-log")))
+        check("chat guardado", wait_for(lambda: len(coll("chats")) == 1 and len(coll("chatlogs")) == 1))
+        sysp = [c["p"] for c in pg.evaluate("window.__mock.calls.sample") if "turnismo?" in c["p"]]
+        check("chat con nivel, reglas, especialidad y apuntes", sysp and "PAU" in sysp[-1] and "realista y objetivo" in sysp[-1] and "especialista en Historia" in sysp[-1] and "MATERIAL DEL PROFESOR" in sysp[-1])
+        click('[data-action=chat-back]')
+        check("vuelve a la asignatura con el chat listado", pg.locator('#r-tab [data-action=chat-open]').count() == 1)
         click('[data-action=subj-tab][data-tab=tasks]')
         check("pestaña tareas de la asignatura", pg.locator("#quick-task").count() == 1)
         click('[data-action=go-home]')
@@ -310,7 +328,145 @@ def main():
             check("repaso diario abre tarjetas", wait_for(lambda: pg.locator('[data-action=fc-mark]').count() > 0 or "terminado" in ltext()))
             click('.viewer [data-action=close-viewer]')
 
+        print("\n[7b] Chats en carpetas, memoria y herramientas")
+        click('[data-action=go-chats]')
+        click('[data-action=folder-new]'); pg.fill("#pb-input", "Filosofía PAU"); click('#prompt-form button[type=submit]')
+        check("crea carpeta", wait_for(lambda: len(coll("folders")) == 1))
+        click('.top [data-action=chat-new]')
+        check("chat general", "Chat general" in text())
+        pg.fill("#chat-input", "Apunta que tengo examen de Filosofía y que me cuesta Kant"); pg.press("#chat-input", "Enter")
+        check("apunta el examen desde el chat", wait_for(lambda: any(v.get("notes") == "Entra Platón" for v in coll("exams").values()), 5000))
+        check("recuerda el dato", wait_for(lambda: "Le cuesta Kant" in json.dumps(store().get("data/users/u_testuser00000000000aa/profile/meta/memory", {}))))
+        check("apunta la tarea", any(v["title"] == "Leer el mito de la caverna" for v in coll("tasks").values()))
+        check("asignatura inexistente da error a Claude, no rompe", "error:No existe la asignatura" in " ".join(pg.evaluate("window.__mock.calls.tools")))
+        check("muestra lo apuntado en el chat", wait_for(lambda: pg.locator(".msg.event").count() == 3))
+        fid = list(coll("folders").keys())[0].split("/")[-1]
+        pg.select_option("#chat-folder", fid); W(400)
+        check("mueve el chat a la carpeta", any(v.get("folderId") == fid for v in coll("chats").values()))
+        shot("16-chat-tools")
+        click('[data-action=chat-back]')
+        check("lista por carpetas", "Filosofía PAU" in text() and "Sin carpeta" in text())
+        shot("17-chats")
+        cid = [k.split("/")[-1] for k, v in coll("chats").items() if v.get("folderId") == fid][0]
+        click(f'[data-action=chat-open][data-id="{cid}"]')
+        check("reabre la conversación guardada", wait_for(lambda: pg.locator(".msg.me").count() == 1 and pg.locator(".msg.event").count() == 3))
+        click('[data-action=chat-menu]'); click('[data-action=chat-rename]'); pg.fill("#pb-input", "Examen de Filosofía"); click('#prompt-form button[type=submit]')
+        check("renombra el chat", wait_for(lambda: any(v["title"] == "Examen de Filosofía" for v in coll("chats").values())) and "Examen de Filosofía" in pg.inner_text("#r-chat-title"))
+        pg.fill("#chat-input", "¿Y qué más tengo que saber?"); pg.press("#chat-input", "Enter")
+        check("el chat recuerda lo apuntado", wait_for(lambda: any("Le cuesta Kant" in c["p"] and "Entra Platón" in c["p"] and "¿Y qué más" in c["p"] for c in pg.evaluate("window.__mock.calls.sample"))))
+        click('[data-action=settings]')
+        check("memoria visible en Personalizar", "Le cuesta Kant" in pg.inner_text("#sheet-root"))
+        click('[data-action=mem-del]')
+        check("borra un recuerdo", wait_for(lambda: "Le cuesta Kant" not in json.dumps(store().get("data/users/u_testuser00000000000aa/profile/meta/memory", {}))))
+        click('[data-action=close-sheet]')
+
+        print("\n[7c] Especialización por asignatura: Filosofía")
+        fil = [k.split("/")[-1] for k, v in coll("subjects").items() if v["name"] == "Historia de la Filosofía"][0]
+        click(f'[data-action=open-subject][data-id="{fil}"]')
+        click('[data-action=upload][data-subject]'); pg.set_input_files("#up-files", [files["platon.txt"]]); W()
+        click('[data-action=up-start]')
+        check("organiza los apuntes", wait_for(lambda: pg.locator('[data-action=up-save]').count() > 0, 6000)); click('[data-action=up-save]')
+        check("apuntes de Filosofía guardados", wait_for(lambda: not sheet_open() and pg.locator('[data-action=generate]').count() > 0, 6000))
+        click('[data-action=generate]', 0)
+        check("kit especial de Filosofía", "especial de filosofía" in pg.inner_text("#sheet-root").lower() and pg.locator('[data-action=gen-type][data-t=author]').count() == 1 and pg.locator('[data-action=gen-type][data-t=problems]').count() == 0)
+        for k in ["mindmap", "outline", "cheat", "author", "textcomment", "slides", "quiz"]:
+            click(f'[data-action=gen-type][data-t={k}]')
+        check("4 tipos elegidos", "Preparar 4" in pg.inner_text("[data-action=gen-start]"))
+        click('[data-action=gen-start]')
+        check("material de Filosofía listo", wait_for(lambda: "Material listo" in text(), 15000))
+        fm = {v["type"]: k.split("/")[-1] for k, v in coll("materials").items() if v["subjectId"] == fil}
+        check("ficha, comentario, presentación y test", set(fm) == {"author", "textcomment", "slides", "quiz"}, str(set(fm)))
+        fp = [c["p"] for c in pg.evaluate("window.__mock.calls.sample.concat(window.__mock.calls.json)") if "FICHA DE AUTOR" in c["p"] or "COMENTARIO DE TEXTO" in c["p"]]
+        check("prompts especializados en Filosofía", len(fp) == 2 and all("especialista en Historia de la Filosofía" in x for x in fp))
+        tiers = {c["p"][:0] + ("FICHA" if "FICHA DE AUTOR" in c["p"] else "OTRO"): c["tier"] for c in pg.evaluate("window.__mock.calls.sample") if "FICHA DE AUTOR" in c["p"]}
+        check("apuntes y fichas con el modelo más capaz", tiers.get("FICHA") == "complex", str(tiers))
+        click('[data-action=close-sheet]'); click('[data-action=subj-tab][data-tab=materials]')
+
+        click(f'[data-action=open-material][data-id="{fm["textcomment"]}"]')
+        check("comentario: texto y respuesta", pg.locator("#pr-ans").count() == 1 and "caverna" in pg.inner_text("#pr-body"))
+        click('[data-action=pr-grade]'); check("pide respuesta antes de corregir", "Escribe tu respuesta" in pg.inner_text("#toast"))
+        pg.fill("#pr-ans", "La idea principal es la teoría de las Ideas…")
+        click('[data-action=pr-grade]')
+        check("corrige con nota y mejoras", wait_for(lambda: "corrección" in pg.inner_text("#pr-body").lower() and "6,5" in pg.inner_text("#pr-body") and "Aristóteles" in pg.inner_text("#pr-body")))
+        check("práctica en estadísticas", any(r["kind"] == "practice" for r in store()["data/users/u_testuser00000000000aa/profile/meta/stats"]["results"]))
+        click('[data-action=pr-solution]'); check("muestra la solución modelo", "Solución modelo" in pg.inner_text("#pr-body"))
+        shot("18-practice")
+        click('[data-action=close-viewer]')
+
+        click(f'[data-action=open-material][data-id="{fm["slides"]}"]')
+        check("presentación: 5 diapositivas", pg.locator(".deck-thumbs .thumb").count() == 5)
+        click('#deck-body .slide:not(.mini)'); check("avanza al hacer clic", "2 / 5" in pg.inner_text("#deck-body"))
+        pg.keyboard.press("ArrowRight"); W(150); check("avanza con el teclado", "3 / 5" in pg.inner_text("#deck-body"))
+        click('[data-action=deck-go][data-i="4"]'); check("salta a una diapositiva", "5 / 5" in pg.inner_text("#deck-body"))
+        shot("19-slides")
+        click('.viewer-bar [data-action=deck-present]')
+        check("modo presentar", pg.evaluate("!!document.fullscreenElement || document.querySelector('#deck-body').classList.contains('presenting')"))
+        click('#deck-body [data-action=deck-present]')
+        check("sale de presentar", pg.evaluate("!document.fullscreenElement && !document.querySelector('#deck-body').classList.contains('presenting')"))
+        click('.viewer [data-action=pptx]'); W(400)
+        check("PowerPoint del material", pg.evaluate("window.__mock.calls.downloads").pop()["filename"] == "platon.pptx")
+        click('[data-action=close-viewer]')
+
+        click(f'[data-action=open-material][data-id="{fm["author"]}"]')
+        click('.viewer [data-action=revise]'); click('[data-action=rv-chip]', 0)
+        check("chip rellena la petición", pg.input_value("#rv-text") == "Más corto")
+        click('#revise-form button[type=submit]')
+        mdoc = lambda: store()[f"data/users/u_testuser00000000000aa/profile/materials/{fm['author']}"]
+        check("rehace el material", wait_for(lambda: mdoc()["content"].startswith("# Versión revisada") and mdoc()["prev"].startswith("# Apuntes")))
+        check("deshacer disponible", wait_for(lambda: pg.locator('.viewer [data-action=revise-undo]').count() == 1))
+        click('.viewer [data-action=revise-undo]')
+        check("deshace", wait_for(lambda: mdoc()["content"].startswith("# Apuntes")))
+        click('[data-action=close-viewer]')
+
+        click(f'[data-action=open-material][data-id="{fm["quiz"]}"]')
+        for i in range(4):
+            click('[data-action=q-pick]', 0); click('[data-action=q-next]')
+        check("termina el test", wait_for(lambda: "resultado" in ltext()))
+        qdoc = lambda: store()[f"data/users/u_testuser00000000000aa/profile/materials/{fm['quiz']}"]["content"]["questions"]
+        click('[data-action=q-more]')
+        check("10 preguntas nuevas (sin repetir)", wait_for(lambda: len(qdoc()) == 8 and len({q['q'] for q in qdoc()}) == 8))
+        check("ronda con las nuevas", wait_for(lambda: "Pregunta 1 de 4" in text()))
+        more_p = [c["p"] for c in pg.evaluate("window.__mock.calls.json") if "NO repitas" in c["p"]]
+        check("pide no repetir las anteriores", more_p and all(q["q"] in more_p[-1] for q in qdoc()[:4]))
+        click('[data-action=q-endless]')
+        for i in range(8):
+            if pg.locator('[data-action=q-pick]').count() == 0: W(300)
+            click('[data-action=q-pick]', 0); click('[data-action=q-next]')
+        check("modo sin fin sigue generando", wait_for(lambda: len(qdoc()) >= 12))
+        click('[data-action=q-finish]')
+        check("resultado del modo sin fin", wait_for(lambda: "resultado" in ltext()))
+        click('[data-action=close-viewer]')
+
+        click('[data-action=subject-menu]'); pg.select_option("#subj-family", "eco"); W(300)
+        check("cambiar el tipo de asignatura", store()[f"data/users/u_testuser00000000000aa/profile/subjects/{fil}"].get("family") == "eco")
+        click('[data-action=generate]', 0)
+        check("cambia el kit (Economía)", "especial de economía y empresa" in pg.inner_text("#sheet-root").lower() and pg.locator('[data-action=gen-type][data-t=problems]').count() == 1)
+        click('[data-action=close-sheet]')
+
+        print("\n[7d] PAU")
+        click('[data-action=go-pau]')
+        check("página de la PAU", "Tu PAU" in text() and "Canarias" in text())
+        pg.fill("#pau-date", iso(TODAY + dt.timedelta(days=200))); click('[data-action=pau-date]')
+        check("guarda la fecha de la PAU", wait_for(lambda: store()["data/users/u_testuser00000000000aa/profile"].get("pauDate") == iso(TODAY + dt.timedelta(days=200))))
+        check("cuenta atrás", wait_for(lambda: "200" in pg.inner_text("#r-pau")))
+        click('[data-action=pau-doc][data-id="_plan"]')
+        check("plan hasta la PAU", wait_for(lambda: "_plan" in json.dumps(list(coll("pau").keys())) and pg.locator("#doc-md h2").count() > 0))
+        pp = [c["p"] for c in pg.evaluate("window.__mock.calls.sample") if "PLAN HASTA LA PAU" in c["p"]]
+        check("plan con fecha, asignaturas y exámenes", pp and "dentro de 200 días" in pp[-1] and "Historia de España" in pp[-1])
+        click('[data-action=close-viewer]')
+        hes = [k.split("/")[-1] for k, v in coll("subjects").items() if v["name"] == "Historia de España"][0]
+        click(f'[data-action=pau-doc][data-id="{hes}"]')
+        check("guía PAU de la asignatura", wait_for(lambda: f"/pau/{hes}" in json.dumps(list(coll("pau").keys()))))
+        gp = [c["p"] for c in pg.evaluate("window.__mock.calls.sample") if "GUÍA DE LA PAU" in c["p"]]
+        check("guía con comunidad y fuente oficial", gp and "Canarias" in gp[-1] and "fuente oficial" in gp[-1])
+        click('[data-action=close-viewer]')
+        shot("20-pau")
+        click(f'[data-action=pau-sim][data-id="{hes}"]')
+        check("simulacro PAU (examen global)", wait_for(lambda: sheet_open() and "Preparar 1" in pg.inner_text("[data-action=gen-start]")))
+        click('[data-action=close-sheet]')
+
         print("\n[8] Personalizar")
+        click('[data-action=go-home]')
         click('[data-action=settings]')
         click('[data-action=pf-accent][data-k=green]'); click('[data-action=pf-size][data-k=lg]')
         pg.uncheck("#pf-home-review"); pg.select_option("#pf-new", "10"); pg.select_option("#pf-hour", "21")
@@ -339,7 +495,7 @@ def main():
         mob.screenshot(path=os.path.join(OUT, "14-mobile-welcome-dark.png"), full_page=True)
         mob.close()
         pg.set_viewport_size({"width": 390, "height": 844}); pg.emulate_media(color_scheme="dark"); W(300)
-        for v in ["go-home", "go-tasks", "go-calendar", "go-stats"]:
+        for v in ["go-home", "go-chats", "go-tasks", "go-calendar", "go-stats"]:
             click(f'[data-action={v}]'); W(200)
             sw = pg.evaluate("document.documentElement.scrollWidth")
             check(f"móvil {v}: sin scroll horizontal", sw <= 390, str(sw)); shot(f"15-mobile-{v}")

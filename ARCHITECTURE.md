@@ -6,7 +6,7 @@ Un solo archivo (`src/repaso.html`): `<style>` con tokens de diseño y un `<scri
 
 | # | Módulo | Responsabilidad |
 |---|--------|-----------------|
-| 0 | Config | Cursos, comunidades, asignaturas por curso, tipos de material, maneras de estudiar, tipos de tarea/examen, preferencias por defecto |
+| 0 | Config | Cursos, comunidades, asignaturas por curso, tipos de material (generales y kits por tipo de asignatura), `FAMILIES` + `FAMILY_HINTS` + `KIT_TASK`, maneras de estudiar, tipos de tarea/examen, recordatorios, preferencias por defecto |
 | 1 | Utils | `$`, `esc` (escapar HTML), fechas locales (`todayISO`, `addDays`, `daysUntil`), `local` (localStorage con try/catch), iconos SVG, `md()` (marked + DOMPurify) |
 | 2 | Libs | Carga diferida y con versión fija de pdf.js, mammoth, JSZip y html2pdf desde cdnjs |
 | 3 | Platform | `usePlatform()` obtiene `db`, `user`, `sample`, `downloads`, `mcp`; cualquiera puede ser `null`. `prefs()` / `applyPrefs()` |
@@ -14,9 +14,9 @@ Un solo archivo (`src/repaso.html`): `<style>` con tokens de diseño y un `<scri
 | 5 | Repo | Toda la lectura y escritura de datos. Suscripciones de app (asignaturas, temas, exámenes, tareas, SRS, estadísticas) y por asignatura (archivos, material) |
 | 6 | SRS + Stats | Repaso espaciado tipo Leitner (cajas 0–5: 0/1/3/7/14/30 días) con límite diario de tarjetas nuevas. Racha, resultados, medias y temas flojos |
 | 7 | Extract | Texto de PDF (y OCR con Claude si está escaneado), DOCX, PPTX, TXT/MD/CSV e imágenes |
-| 8 | AI | `AI.level()` (PAU de la comunidad / LOMLOE / carrera), `AI.phase(días)` (comprensión → práctica → modo examen → último momento), prompts de cada material, validación de respuestas JSON, organizador de archivos, ayuda de tareas |
-| 9 | Views | Acceso, inicio, tareas, calendario, progreso, asignatura (temas · material · tareas · pregúntale), hojas modales y visores |
-| 10 | Export | HTML de impresión → PDF con html2pdf → `downloads.save` |
+| 8 | AI | `AI.tier()` (modelo por tarea y modo ahorro), `AI.rules()` (realista y objetivo, sin internet), `AI.familyHint()` (especialista según la asignatura), `AI.level()` (PAU de la comunidad / LOMLOE / carrera), `AI.phase(días)` (comprensión → práctica → modo examen → último momento), prompts de cada material, validación de respuestas JSON, organizador de archivos, ayuda de tareas |
+| 9 | Views | Acceso, inicio, PAU, chats (carpetas, memoria y herramientas), tareas, calendario, progreso, asignatura (temas · material · tareas · pregúntale), hojas modales y visores (material, prácticas con corrección, diapositivas, test sin fin) |
+| 10 | Export | HTML de impresión → PDF con html2pdf; diapositivas → PowerPoint con PptxGenJS; ambos con `downloads.save` |
 | 11 | Events + Boot | Mapas `ACTIONS` (clic), `CHANGES` (change) y manejadores de input, submit y teclado; arranque |
 
 ### Patrones
@@ -30,20 +30,35 @@ Un solo archivo (`src/repaso.html`): `<style>` con tokens de diseño y un `<scri
 ## Modelo de datos (`db`)
 
 ```
-data/users/<uid>/profile                     {name, course, region, pau, uni:{university,degree,year}, style, prefs, schema}
-data/users/<uid>/profile/subjects/<id>       {name, color, createdAt}
+data/users/<uid>/profile                     {name, course, region, pau, pauDate, uni:{university,degree,year}, style, prefs, schema}
+data/users/<uid>/profile/subjects/<id>       {name, color, family?, createdAt}
 data/users/<uid>/profile/topics/<id>         {subjectId, name, createdAt}
 data/users/<uid>/profile/exams/<id>          {subjectId, topicIds[], date, kind, title, notes, grade, max, calendar}
-data/users/<uid>/profile/tasks/<id>          {subjectId|null, title, type, due, time, priority, notes, status, doneAt, checklist[], fileCount, help, calendar}
+data/users/<uid>/profile/tasks/<id>          {subjectId|null, title, type, due, time, priority, notes, status, doneAt, checklist[], fileCount, help, deck, remind, calendar}
 data/users/<uid>/profile/files/<id>          {subjectId, topicId|null, taskId|null, name, kind, chars, parts}
 data/users/<uid>/profile/texts/<id>[.pN]     {text}  — 100.000 caracteres por documento (límite 256 KiB)
-data/users/<uid>/profile/materials/<id>      {subjectId, topicIds[], topicNames[], type, title, content, meta, attempts[], shareCode}
+data/users/<uid>/profile/materials/<id>      {subjectId, topicIds[], topicNames[], type, title, content, prev, meta, attempts[], shareCode}
 data/users/<uid>/profile/srs/<materialId>    {subjectId, title, total, cards:{i:{b, due, f}}}
+data/users/<uid>/profile/chats/<id>          {title, subjectId, folderId, topicIds|null, updatedAt, count}
+data/users/<uid>/profile/chatlogs/<id>       {turns:[{role:user|assistant|event, content}]}  (≤230 KB)
+data/users/<uid>/profile/folders/<id>        {name}
+data/users/<uid>/profile/pau/<sid|_plan>     {md, region, at}
+data/users/<uid>/profile/meta/memory         {items:[{id, text, at}]}  (≤80)
 data/users/<uid>/profile/meta/stats          {days:{fecha:n}, results:[{kind,sid,tids,score,total,title,at}] (últimos 300)}
 shared/<uid>/items/<código>                  {from, subjectName, type, title, content, createdAt}
 ```
 
 `data/users/<uid>` es privado para cada usuaria (ni el dueño del artifact lo ve). `shared/` lo lee cualquiera con acceso y solo lo escribe su autora (`shared/{self}`).
+
+## Especialización por asignatura
+
+`familyOf(subject)` deduce el tipo por el nombre (o usa `subject.family` si la alumna lo cambió). Cada tipo aporta:
+- `FAMILY_HINTS[tipo]`: cómo se especializa Claude (se añade a todos los prompts y al chat).
+- Los tipos de material con `kits` que lo incluyen: `md` (fichas, formularios, líneas del tiempo…) o `practice` (ejercicio + respuesta + corrección con nota). Las prácticas comparten un contrato JSON (`PRACTICE_JSON`) y un visor (`practiceRender`).
+
+## Chat con memoria
+
+`chatSystem()` construye el contexto: nivel, especialidad, reglas, estilo, fecha, memoria, próximos exámenes, tareas, temas flojos y apuntes (hasta 90.000 caracteres). Si la vista admite herramientas, `chatTools()` da a Claude `recordar`, `apuntar_examen` y `apuntar_tarea`. Lo que apunta aparece en la conversación como un aviso y se guarda en el registro.
 
 ## Claude (`sample`)
 

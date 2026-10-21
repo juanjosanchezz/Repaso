@@ -9,7 +9,8 @@
   const segs = p => p.split("/");
   const SEG = /^[A-Za-z0-9_\-.~:@+]{1,200}$/;
   const later = v => new Promise(r => setTimeout(() => r(v), 3));
-  const M = (window.__mock = { store, calls: { sample: [], json: [], mcp: [], downloads: [] }, errors: [], failNext: null });
+  const M = (window.__mock = { store, calls: { sample: [], json: [], mcp: [], downloads: [], tools: [] }, errors: [], failNext: null });
+  let qn = 0;
 
   function checkPath(p, wantDoc) {
     const s = segs(p);
@@ -59,8 +60,11 @@
 
   const text = input => (typeof input === "string" ? input : input.map(t => t.content).join("\n"));
   function fakeJson(p) {
+    if (p.includes('"improved_md"')) return { score: 6.5, summary: "Bien encaminado, pero falta relacionar.", good: ["Identificas la idea principal"], fix: ["Falta la relación con Aristóteles"], improved_md: "## Versión mejorada\nTexto." };
+    if (p.includes('"slides":[')) return { title: "Platón", subtitle: "La teoría de las Ideas", minutes: 10, slides: [{ layout: "title", title: "Platón" }, { layout: "bullets", title: "Ideas", bullets: ["Mundo sensible", "Mundo inteligible"], notes: "Explica los dos mundos.", visual: "Mito de la caverna" }, { layout: "two", title: "Comparación", left_title: "Platón", left: ["Ideas"], right_title: "Aristóteles", right: ["Sustancia"] }, { layout: "quote", quote: "Solo sé que no sé nada", author: "Sócrates" }, { layout: "end", title: "Gracias" }] };
+    if (p.includes('"task_md"')) return { title: "Comentario de Platón", instructions_md: "Comenta el texto (10 puntos, 30 min).", task_md: "> Texto adaptado de Platón sobre la caverna.\n\n1. Idea principal.", solution_md: "Modelo de comentario.", criteria_md: "Idea principal 2 puntos…" };
     if (p.includes('"cards":[')) return { cards: Array.from({ length: 6 }, (_, i) => ({ q: `Pregunta ${i + 1}: ¿qué fue el turnismo?`, a: `Respuesta ${i + 1}: alternancia pactada.`, tag: "Tema 1" })) };
-    if (p.includes('"questions":[{"q"')) return { questions: Array.from({ length: 4 }, (_, i) => ({ q: `Test ${i + 1}`, options: ["A1", "B1", "C1", "D1"], answer: i % 4, explain: "Porque sí.", tag: "Tema 1" })) };
+    if (p.includes('"questions":[{"q"')) { qn++; return { questions: Array.from({ length: 4 }, (_, i) => ({ q: `Test ${qn}-${i + 1}`, options: ["A1", "B1", "C1", "D1"], answer: i % 4, explain: "Porque sí.", tag: "Tema 1" })) }; }
     if (p.includes('"exam_md"')) return { title: "Modelo PAU · Historia", minutes: 1, exam_md: "1. Explica el turnismo (2 puntos)\n2. Comenta la fuente (8 puntos)", solutions_md: "1. Alternancia...\n2. Comentario..." };
     if (p.includes('"center"')) return { center: "La Restauración", branches: [{ title: "Sistema", children: [{ title: "Turnismo", children: [{ title: "Cánovas" }] }] }, { title: "Crisis", children: [{ title: "1898" }] }] };
     if (p.includes('"items":[{"i"')) { const n = (p.match(/\[\d+\] Archivo/g) || []).length; return { items: Array.from({ length: n }, (_, i) => ({ i, topic: i % 2 ? "Tema 2 · La Segunda República" : "Tema 1 · La Restauración" })) }; }
@@ -71,13 +75,27 @@
   }
   function fakeText(p) {
     if (p.startsWith("Transcribe")) return "# Apuntes escaneados\nTexto transcrito de la imagen.";
+    if (p.includes("MATERIAL ACTUAL")) return "# Versión revisada\n\nMás corto.";
     return "# Apuntes\n\n## Apartado\n**Turnismo**: alternancia pactada.\n\n> **Clave:** el pacto de El Pardo.\n\n<details><summary>Comprueba</summary>respuesta</details>";
   }
   const sample = async (input, opts = {}) => {
     const p = text(input); M.calls.sample.push({ p, images: !!opts.images, tier: opts.modelTier, cache: opts.cache });
     if (new Blob([p]).size > 262144) throw { code: "prompt_too_large", message: "too large" };
     if (opts.signal?.aborted) throw { code: "cancelled" };
-    await later(); const t = fakeText(p); opts.onText?.({ text: t, delta: t }); return { text: t, truncated: false, modelTierApplied: opts.modelTier || "default" };
+    await later();
+    if (opts.tools?.length) {
+      const lastUser = Array.isArray(input) ? input.at(-1).content : p;
+      const tool = n => opts.tools.find(x => x.name === n);
+      const run = async (n, a) => { M.calls.tools.push(n); try { return await tool(n).execute(a, { signal: new AbortController().signal }); } catch (e) { M.calls.tools.push("error:" + e.message); return "Error: " + e.message; } };
+      if (/apunta/i.test(lastUser)) {
+        const d = new Date(Date.now() + 6 * 864e5); const iso = new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+        await run("apuntar_examen", { asignatura: "historia de la filosofia", fecha: iso, tipo: "Examen", notas: "Entra Platón" });
+        await run("recordar", { dato: "Le cuesta Kant" });
+        await run("apuntar_tarea", { titulo: "Leer el mito de la caverna", fecha: iso, asignatura: "Filosofía" });
+        await run("apuntar_examen", { asignatura: "Astrología", fecha: iso });
+      }
+    }
+    const t = fakeText(p); opts.onText?.({ text: t, delta: t }); return { text: t, truncated: false, modelTierApplied: opts.modelTier || "default" };
   };
   sample.json = async (input, opts = {}) => {
     const p = text(input); M.calls.json.push({ p, images: !!opts.images, tier: opts.modelTier });
