@@ -1,0 +1,13 @@
+{
+  "name": "repaso",
+  "version": "4.1.0",
+  "private": true,
+  "description": "App de estudio enfocada en la PAU, hecha con Claude",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node scripts/build-web.js",
+    "test": "python3 test/e2e.py && python3 test/web_smoke.py && node test/api_test.js"
+  }
+}

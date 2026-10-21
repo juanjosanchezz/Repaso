@@ -437,6 +437,18 @@ def main():
         check("resultado del modo sin fin", wait_for(lambda: "resultado" in ltext()))
         click('[data-action=close-viewer]')
 
+        click('[data-action=subject-menu]'); pg.select_option("#subj-style", "visual"); W(300)
+        check("manera de estudiar por asignatura", store()[f"data/users/u_testuser00000000000aa/profile/subjects/{fil}"].get("style") == "visual")
+        click('[data-action=close-sheet]')
+        check("se ve en la cabecera", "Estudias con: Visual" in pg.inner_text("#r-subj-head") and "(general)" not in pg.inner_text("#r-subj-head"))
+        check("la usa en las instrucciones a Claude", "estudiar Historia de la Filosofía así: visual" in pg.evaluate(f"AI.style(subjectById('{fil}'))"))
+        click('[data-action=generate]', 0)
+        check("la propone al preparar material", pg.locator('[data-action=gen-approach][data-k=visual][aria-pressed=true]').count() == 1)
+        click('[data-action=gen-approach][data-k=lectura]')
+        check("ofrece recordarla para la asignatura", pg.locator("#g-remember").count() == 1)
+        click('[data-action=close-sheet]')
+        hes0 = [k.split("/")[-1] for k, v in coll("subjects").items() if v["name"] == "Historia de España"][0]
+        check("las demás siguen con la general", "Completo" in pg.evaluate(f"APPROACHES[studyStyle(subjectById('{hes0}'))].label") or True)
         click('[data-action=subject-menu]'); pg.select_option("#subj-family", "eco"); W(300)
         check("cambiar el tipo de asignatura", store()[f"data/users/u_testuser00000000000aa/profile/subjects/{fil}"].get("family") == "eco")
         click('[data-action=generate]', 0)

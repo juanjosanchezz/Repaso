@@ -1,4 +1,7 @@
 __pycache__/
 node_modules/
+dist/
 *.png
 .DS_Store
+.vercel
+.env*

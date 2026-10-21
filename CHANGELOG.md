@@ -1,5 +1,12 @@
 # Cambios
 
+## 4.1 — 21 oct 2026
+- Versión web para Vercel: `web/claude-web.js` (base de datos en el navegador, Claude por streaming con herramientas e imágenes, descargas), función `api/claude.js` con código de acceso, `scripts/build-web.js` y `vercel.json`. Copia de seguridad en Personalizar.
+- Manera de estudiar por asignatura (en la cabecera de cada asignatura, en su menú y al preparar material con "estudiar siempre así"). Se usa en el material y en el chat.
+- Formularios: todos los campos miden lo mismo (fechas, horas, desplegables y texto) y los botones junto a un campo van a su altura; logo en los pasos de registro en el móvil.
+- Corregido: la función de Vercel rechazaba cuerpos de petición que llegaban como texto.
+- Pruebas: 171 del artifact, 15 de la web y 7 de la API.
+
 ## 4.0 — 21 oct 2026
 - Página PAU: cuenta atrás, plan hasta la PAU, guía de la PAU por asignatura y comunidad, simulacros y datos reales por asignatura.
 - Especialización por tipo de asignatura con kits propios (Filosofía, Historia, Arte, Geografía, Lengua, idiomas, clásicas, Matemáticas, Física, Química, Biología, Economía, Dibujo) y ejercicios de práctica con corrección y nota (también con fotos).

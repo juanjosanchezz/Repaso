@@ -72,3 +72,17 @@ shared/<uid>/items/<código>                  {from, subjectName, type, title, c
 - **Exámenes como entidad propia** (no fecha por tema): un examen cubre varios temas, tiene tipo, notas del profe y nota real.
 - **Tareas separadas del material**: los adjuntos de una tarea se guardan como archivos con `taskId`, sin tema, así que no se mezclan en el material de estudio.
 - **Imprimir**: el visor no puede abrir el diálogo de impresión, así que se genera un PDF y se ofrece con `downloads`.
+
+## Versión web (Vercel)
+
+```
+navegador: dist/index.html = web/claude-web.js + src/repaso.html
+              │  window.claude.use("db" | "user" | "sample" | "downloads")
+              │    db        → IndexedDB (un documento por ruta)
+              │    sample    → POST /api/claude (stream SSE), bucle de herramientas en el navegador
+              │    downloads → descarga normal
+              ▼
+Vercel: api/claude.js  → comprueba REPASO_ACCESS_CODE → API de Claude (stream) con ANTHROPIC_API_KEY
+```
+
+La app detecta la versión web con `WEB` y esconde lo que solo existe dentro de Claude (Google Calendar con `calOK()`, compartir con `shareOK()`), y añade la copia de seguridad.

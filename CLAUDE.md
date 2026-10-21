@@ -15,10 +15,14 @@
 ## Antes de dar algo por terminado
 
 ```bash
-python3 test/e2e.py
+python3 test/e2e.py && python3 test/web_smoke.py && node test/api_test.js
 ```
 
 Tiene que acabar en `N/N comprobaciones correctas` y sin errores de JavaScript. Si añades una función, añade su recorrido a `test/e2e.py`. Si llamas a una capacidad nueva de Claude, impleméntala también en `test/mock-claude.js`.
+
+## Versión web
+
+`web/claude-web.js` imita la interfaz `window.claude.use()` del artifact; si la app usa una capacidad nueva, añádela ahí también (o comprueba `WEB` en la app y escóndela). `dist/` se genera con `node scripts/build-web.js`: no se edita a mano ni se sube a git.
 
 ## Publicar
 
