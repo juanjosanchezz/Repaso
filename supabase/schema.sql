@@ -1,9 +1,13 @@
 -- Repaso · base de datos para las cuentas de la versión web.
--- Pégalo entero en Supabase → SQL Editor → New query y pulsa Run. Se puede ejecutar más de una vez.
+-- Se aplica solo en cada despliegue de Vercel (scripts/migrate.js, con POSTGRES_URL de la
+-- integración de Supabase). A mano: Supabase → SQL Editor → New query → pegar → Run.
+-- Se puede ejecutar más de una vez.
 --
 -- Una fila por documento de la app (perfil, asignaturas, temas, archivos, materiales…).
 -- `path` es la ruta dentro de la cuenta, p. ej. "profile" o "profile/subjects/abc123".
 -- Cada usuaria solo puede leer y escribir sus filas (Row Level Security).
+
+set client_min_messages = warning;
 
 create table if not exists public.repaso_docs (
   user_id    uuid        not null default auth.uid() references auth.users (id) on delete cascade,
@@ -46,3 +50,6 @@ create policy "repaso: borrar lo mio" on public.repaso_docs
 
 revoke all on public.repaso_docs from anon;
 grant select, insert, update, delete on public.repaso_docs to authenticated;
+
+-- Que la API de Supabase vea la tabla nueva sin esperar.
+notify pgrst, 'reload schema';

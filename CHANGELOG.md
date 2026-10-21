@@ -1,5 +1,9 @@
 # Cambios
 
+## 4.2.1 — 21 oct 2026
+- La tabla de la base de datos se crea sola en cada despliegue (`scripts/migrate.js` con la conexión de la integración de Supabase): basta con conectar Supabase en Vercel y desplegar.
+- La app reconoce el aviso de "tabla que falta" de las versiones nuevas de Supabase.
+
 ## 4.2 — 21 oct 2026
 - Cuentas de verdad en la versión web: registro con email y contraseña, iniciar sesión desde cualquier dispositivo, confirmar email, he olvidado la contraseña, cambiar contraseña, cerrar sesión (solo en ese dispositivo) y borrar la cuenta con todos sus datos.
 - Base de datos en Supabase (`supabase/schema.sql`): cada usuaria solo ve lo suyo; los cambios se sincronizan entre dispositivos.

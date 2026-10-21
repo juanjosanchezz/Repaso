@@ -27,7 +27,8 @@ web/claude-web.js      Versión web: la misma interfaz de Claude en el navegador
 api/claude.js          Función de Vercel: puente con la API de Claude (tu clave nunca llega al navegador)
 api/account.js         Función de Vercel: borrar la cuenta (usuario de Supabase y todos sus datos)
 lib/supabase.js        Comprobación de la sesión de Supabase en el servidor
-supabase/schema.sql    Tabla y reglas de la base de datos (se pega una vez en Supabase)
+supabase/schema.sql    Tabla y reglas de la base de datos
+scripts/migrate.js     Aplica schema.sql en cada despliegue (con POSTGRES_URL de la integración)
 scripts/build-web.js   Genera dist/index.html para Vercel (sin dependencias)
 vercel.json            Configuración de Vercel
 test/mock-claude.js    Simulación del runtime de Claude: db, user, sample, downloads, mcp
@@ -51,13 +52,13 @@ En Vercel: **Add New → Project** e importa este repositorio. `vercel.json` ya 
 
 ### 2. Base de datos (Supabase)
 
-1. En el proyecto de Vercel: **Storage → Create Database → Supabase** (o *Connect* si ya tienes uno) y conéctalo al proyecto. Vercel añade solo las variables `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` y sus versiones `NEXT_PUBLIC_…`.
-   *Si prefieres crearlo en supabase.com*, copia de **Project Settings → API** la URL, la clave `anon` (o *publishable*) y la `service_role` (o *secret*) y añádelas a mano con esos nombres.
-2. Abre el proyecto en Supabase → **SQL Editor → New query**, pega entero `supabase/schema.sql` y pulsa **Run**. Crea la tabla `repaso_docs` con sus reglas: cada usuaria solo puede leer y escribir lo suyo.
-3. Supabase → **Authentication → URL Configuration**: en *Site URL* pon la dirección de tu web (`https://….vercel.app`) y añádela también en *Redirect URLs*. Es adonde llevan los correos de confirmar cuenta y cambiar contraseña.
-4. Supabase → **Authentication → Sign In / Providers → Email**:
-   - *Confirm email* activado: al registrarse llega un correo para confirmar. El correo que trae Supabase de serie solo envía unos pocos por hora; si se registran varias a la vez, configura un SMTP propio (*Authentication → Emails → SMTP*) o desactívalo.
-   - *Confirm email* desactivado: entran directamente al crear la cuenta. Es lo más cómodo para un grupo de amigas.
+En el proyecto de Vercel: **Storage → Supabase** y conéctalo al proyecto. Ya está: Vercel añade las variables (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `POSTGRES_URL`…) y en cada despliegue `scripts/migrate.js` crea o pone al día la tabla `repaso_docs` con sus reglas (cada usuaria solo lee y escribe lo suyo). En el registro del build sale `Base de datos: tabla repaso_docs lista.`
+
+Solo si usas confirmación por correo (en Supabase viene activada):
+- **Authentication → URL Configuration**: pon la dirección de tu web (`https://….vercel.app`) en *Site URL* y en *Redirect URLs*, que es adonde llevan los correos.
+- El correo que trae Supabase de serie solo envía unos pocos por hora. Para un grupo de amigas lo más cómodo es desactivar *Confirm email* en **Authentication → Sign In / Providers → Email**: entran nada más crear la cuenta.
+
+*Si creaste Supabase fuera de Vercel*, añade a mano `SUPABASE_URL`, `SUPABASE_ANON_KEY` (o la *publishable*), `SUPABASE_SERVICE_ROLE_KEY` (o la *secret*) y `POSTGRES_URL` (Project Settings → Database → Connection string). Sin `POSTGRES_URL`, pega `supabase/schema.sql` en **SQL Editor** y pulsa **Run**.
 
 ### 3. Claude
 
@@ -70,7 +71,7 @@ Pon también un límite de gasto mensual en console.anthropic.com: el uso de Cla
 
 ### 4. Desplegar
 
-**Deployments → ⋯ → Redeploy** (cada vez que cambies variables hay que volver a desplegar). En el registro del build aparece `cuentas: Supabase (…)` si ha encontrado la base de datos.
+**Deployments → ⋯ → Redeploy** (cada vez que cambies variables hay que volver a desplegar). En el registro del build aparecen `Base de datos: tabla repaso_docs lista.` y `cuentas: Supabase (…)`.
 
 Cómo comprobar que todo va: crea una cuenta, añade una tarea, entra con la misma cuenta desde otro móvil y mira que aparece; luego pide unos apuntes. Si algo falla, **Vercel → Logs** dice qué.
 
@@ -104,6 +105,7 @@ python3 test/e2e.py          # artifact: 171 comprobaciones (E2E_OUT=carpeta par
 python3 test/web_smoke.py    # versión web sin cuentas: 15 comprobaciones
 python3 test/web_accounts.py # cuentas con Supabase simulado: 54 comprobaciones
 node test/api_test.js        # funciones de Vercel: 15 comprobaciones
+node test/migrate_test.js    # migración de la base de datos: 6 comprobaciones
 ```
 
 La prueba no usa red: el runtime de Claude (incluidas las herramientas del chat) y las librerías (pdf.js, mammoth, JSZip, html2pdf, PptxGenJS, marked, DOMPurify) se sustituyen por imitaciones con la misma interfaz. La lectura real de PDF/Word, la generación real de PDF y PowerPoint y Google Calendar se comprueban a mano en Claude.

@@ -127,7 +127,7 @@
     if (!code && /email/i.test(msg) && (status === 400 || status === 422)) code = "invalid_email";
     if (!code && status === 429) code = "rate_limited";
     if (!code && (status === 401 || status === 403 || raw === "PGRST301" || raw === "PGRST303")) code = "unauthorized";
-    if (!code && raw === "42P01") code = "no_table";
+    if (!code && (raw === "42P01" || raw === "PGRST205")) code = "no_table";
     if (!code && status === 404 && /relation|table|schema cache/i.test(msg)) code = "no_table";
     return { code: code || "unavailable", message: msg || "Error " + status, status };
   }

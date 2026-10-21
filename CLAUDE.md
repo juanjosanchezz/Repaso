@@ -15,7 +15,7 @@
 ## Antes de dar algo por terminado
 
 ```bash
-python3 test/e2e.py && python3 test/web_smoke.py && python3 test/web_accounts.py && node test/api_test.js
+python3 test/e2e.py && python3 test/web_smoke.py && python3 test/web_accounts.py && node test/api_test.js && node test/migrate_test.js
 ```
 
 Tiene que acabar en `N/N comprobaciones correctas` y sin errores de JavaScript. Si añades una función, añade su recorrido a `test/e2e.py`. Si llamas a una capacidad nueva de Claude, impleméntala también en `test/mock-claude.js`.
@@ -24,7 +24,7 @@ Tiene que acabar en `N/N comprobaciones correctas` y sin errores de JavaScript. 
 
 `web/claude-web.js` imita la interfaz `window.claude.use()` del artifact; si la app usa una capacidad nueva, añádela ahí también (o comprueba `WEB` en la app y escóndela). `dist/` se genera con `node scripts/build-web.js`: no se edita a mano ni se sube a git.
 
-Cuentas: `account` solo existe en la web con Supabase. Lo de cuentas va en `Auth` (módulo 4) y en las pantallas de acceso; comprueba `Auth.real`, nunca `WEB`, para distinguir cuentas de verdad. Su recorrido se prueba en `test/web_accounts.py` (Supabase simulado). La clave secreta de Supabase solo se usa en `api/`; al navegador solo va la pública. Si cambias la tabla, actualiza `supabase/schema.sql` (que se pueda ejecutar más de una vez).
+Cuentas: `account` solo existe en la web con Supabase. Lo de cuentas va en `Auth` (módulo 4) y en las pantallas de acceso; comprueba `Auth.real`, nunca `WEB`, para distinguir cuentas de verdad. Su recorrido se prueba en `test/web_accounts.py` (Supabase simulado). La clave secreta de Supabase solo se usa en `api/`; al navegador solo va la pública. Si cambias la tabla, actualiza `supabase/schema.sql` (que se pueda ejecutar más de una vez): `scripts/migrate.js` lo aplica en cada despliegue.
 
 ## Publicar
 
