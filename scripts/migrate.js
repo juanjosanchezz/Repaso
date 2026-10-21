@@ -18,6 +18,8 @@ function cleanUrl(u) {
 async function migrate(env = process.env, pg) {
   const urls = [env.POSTGRES_URL_NON_POOLING, env.POSTGRES_URL, env.DATABASE_URL].filter(Boolean);
   if (!urls.length) { console.log("Base de datos: no hay POSTGRES_URL; me lo salto."); return "skipped"; }
+  // Las cuentas necesitan Supabase (trae Auth). Otra base de datos (Neon…) no sirve para esto.
+  if (!(env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL)) { console.warn("Base de datos: hay POSTGRES_URL pero no SUPABASE_URL. Para las cuentas conecta Supabase (Storage → Supabase); Neon u otra base de datos no sirven."); return "not_supabase"; }
   try { pg = pg || require("pg"); }
   catch { console.warn("Base de datos: falta la librería pg (npm install). Aplica supabase/schema.sql a mano."); return "no_pg"; }
   let last;

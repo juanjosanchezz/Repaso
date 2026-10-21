@@ -52,7 +52,7 @@ En Vercel: **Add New → Project** e importa este repositorio. `vercel.json` ya 
 
 ### 2. Base de datos (Supabase)
 
-En el proyecto de Vercel: **Storage → Supabase** y conéctalo al proyecto. Ya está: Vercel añade las variables (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `POSTGRES_URL`…) y en cada despliegue `scripts/migrate.js` crea o pone al día la tabla `repaso_docs` con sus reglas (cada usuaria solo lee y escribe lo suyo). En el registro del build sale `Base de datos: tabla repaso_docs lista.`
+En el proyecto de Vercel: **Storage → Supabase** y conéctalo al proyecto. Tiene que ser **Supabase**, no Neon ni otra base de datos: Supabase trae también las cuentas (registro, contraseñas, correos). Ya está: Vercel añade las variables (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `POSTGRES_URL`…) y en cada despliegue `scripts/migrate.js` crea o pone al día la tabla `repaso_docs` con sus reglas (cada usuaria solo lee y escribe lo suyo). En el registro del build sale `Base de datos: tabla repaso_docs lista.`
 
 Solo si usas confirmación por correo (en Supabase viene activada):
 - **Authentication → URL Configuration**: pon la dirección de tu web (`https://….vercel.app`) en *Site URL* y en *Redirect URLs*, que es adonde llevan los correos.
@@ -105,7 +105,7 @@ python3 test/e2e.py          # artifact: 171 comprobaciones (E2E_OUT=carpeta par
 python3 test/web_smoke.py    # versión web sin cuentas: 15 comprobaciones
 python3 test/web_accounts.py # cuentas con Supabase simulado: 54 comprobaciones
 node test/api_test.js        # funciones de Vercel: 15 comprobaciones
-node test/migrate_test.js    # migración de la base de datos: 6 comprobaciones
+node test/migrate_test.js    # migración de la base de datos: 7 comprobaciones
 ```
 
 La prueba no usa red: el runtime de Claude (incluidas las herramientas del chat) y las librerías (pdf.js, mammoth, JSZip, html2pdf, PptxGenJS, marked, DOMPurify) se sustituyen por imitaciones con la misma interfaz. La lectura real de PDF/Word, la generación real de PDF y PowerPoint y Google Calendar se comprueban a mano en Claude.
