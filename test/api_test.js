@@ -29,5 +29,29 @@ const msgs = [{ role: "user", content: [{ type: "text", text: "hola" }] }];
   global.fetch = async () => ({ ok: false, status: 529, text: async () => "overloaded" });
   r = res(); await handler(req({ messages: msgs }, { "x-repaso-code": "secreto" }), r); assert.equal(r.statusCode, 429); ok++;
   r = res(); const g = req({}); g.method = "GET"; await handler(g, r); assert.equal(r.statusCode, 405); ok++;
-  console.log(`${ok}/7 comprobaciones correctas (api)`);
+
+  // Con cuentas (Supabase): solo se atiende a quien tiene sesión.
+  process.env.SUPABASE_URL = "https://sb.test"; process.env.SUPABASE_ANON_KEY = "sb_publishable_x";
+  const sbFetch = (claudeOk = true) => async (url, init) => {
+    if (url === "https://sb.test/auth/v1/user") return init.headers.authorization === "Bearer buena" ? { ok: true, status: 200, json: async () => ({ id: "u1", email: "j@test.es" }) } : { ok: false, status: 401, json: async () => ({}) };
+    if (url.startsWith("https://sb.test/auth/v1/admin/users/")) { sent = { url, init }; return { ok: true, status: 200, text: async () => "" }; }
+    const enc = new TextEncoder(); return { ok: claudeOk, status: 200, body: new ReadableStream({ start(c) { c.enqueue(enc.encode("data: {\"type\":\"message_stop\"}\n\n")); c.close(); } }) };
+  };
+  global.fetch = sbFetch();
+  r = res(); await handler(req({ messages: msgs }, { "x-repaso-code": "secreto" }), r); assert.equal(r.statusCode, 401); assert.match(r.chunks.join(""), /no_session/); ok++;
+  r = res(); await handler(req({ messages: msgs }, { "x-repaso-code": "secreto", authorization: "Bearer mala" }), r); assert.equal(r.statusCode, 401); assert.match(r.chunks.join(""), /no_session/); ok++;
+  r = res(); await handler(req({ messages: msgs }, { "x-repaso-code": "mal", authorization: "Bearer buena" }), r); assert.equal(r.statusCode, 401); assert.match(r.chunks.join(""), /bad_code/); ok++;
+  r = res(); await handler(req({ messages: msgs }, { "x-repaso-code": "secreto", authorization: "Bearer buena" }), r); assert.equal(r.statusCode, 200); ok++;
+
+  const account = require("../api/account.js");
+  const dreq = h => { const x = req({}, h); x.method = "DELETE"; return x; };
+  r = res(); await account(dreq({}), r); assert.equal(r.statusCode, 401); ok++;
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  r = res(); await account(dreq({ authorization: "Bearer buena" }), r); assert.equal(r.statusCode, 501); assert.match(r.chunks.join(""), /missing_service_key/); ok++;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_y"; sent = null;
+  r = res(); await account(dreq({ authorization: "Bearer buena" }), r); assert.equal(r.statusCode, 200);
+  assert.equal(sent.url, "https://sb.test/auth/v1/admin/users/u1"); assert.equal(sent.init.method, "DELETE"); assert.equal(sent.init.headers.apikey, "sb_secret_y"); assert.equal(sent.init.headers.authorization, undefined); ok++;
+  r = res(); const gg = req({}); gg.method = "GET"; await account(gg, r); assert.equal(r.statusCode, 405); ok++;
+
+  console.log(`${ok}/15 comprobaciones correctas (api)`);
 })().catch(e => { console.error("FAIL", e); process.exit(1); });

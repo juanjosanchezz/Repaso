@@ -1,5 +1,12 @@
 # Cambios
 
+## 4.2 — 21 oct 2026
+- Cuentas de verdad en la versión web: registro con email y contraseña, iniciar sesión desde cualquier dispositivo, confirmar email, he olvidado la contraseña, cambiar contraseña, cerrar sesión (solo en ese dispositivo) y borrar la cuenta con todos sus datos.
+- Base de datos en Supabase (`supabase/schema.sql`): cada usuaria solo ve lo suyo; los cambios se sincronizan entre dispositivos.
+- `/api/claude` solo atiende a quien tiene sesión; el código de acceso se pide una vez por cuenta. Nueva función `/api/account`.
+- Sin Supabase configurado, la web sigue funcionando como antes (datos en el navegador).
+- Pruebas: 54 de cuentas con un Supabase simulado; 15 de las funciones de Vercel.
+
 ## 4.1 — 21 oct 2026
 - Versión web para Vercel: `web/claude-web.js` (base de datos en el navegador, Claude por streaming con herramientas e imágenes, descargas), función `api/claude.js` con código de acceso, `scripts/build-web.js` y `vercel.json`. Copia de seguridad en Personalizar.
 - Manera de estudiar por asignatura (en la cabecera de cada asignatura, en su menú y al preparar material con "estudiar siempre así"). Se usa en el material y en el chat.

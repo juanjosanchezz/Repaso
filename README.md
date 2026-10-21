@@ -25,12 +25,16 @@ App de estudio que funciona de dos formas: como **artifact de Claude** y como **
 src/repaso.html        La app completa (un único archivo, como exige el artifact)
 web/claude-web.js      Versión web: la misma interfaz de Claude en el navegador (IndexedDB, /api/claude, descargas)
 api/claude.js          Función de Vercel: puente con la API de Claude (tu clave nunca llega al navegador)
+api/account.js         Función de Vercel: borrar la cuenta (usuario de Supabase y todos sus datos)
+lib/supabase.js        Comprobación de la sesión de Supabase en el servidor
+supabase/schema.sql    Tabla y reglas de la base de datos (se pega una vez en Supabase)
 scripts/build-web.js   Genera dist/index.html para Vercel (sin dependencias)
 vercel.json            Configuración de Vercel
 test/mock-claude.js    Simulación del runtime de Claude: db, user, sample, downloads, mcp
 test/lib-stubs.js      Sustitutos de las librerías CDN para probar sin red
 test/e2e.py            Prueba end-to-end del artifact (Playwright)
-test/web_smoke.py      Prueba de la versión web (código de acceso, streaming, herramientas, datos tras recargar)
+test/web_smoke.py      Prueba de la versión web sin cuentas (código de acceso, streaming, herramientas, datos tras recargar)
+test/web_accounts.py   Prueba de las cuentas con un Supabase simulado (registro, otro dispositivo, sincronización, contraseñas, borrado)
 test/api_test.js       Prueba de la función de Vercel
 ARCHITECTURE.md      Módulos, modelo de datos y decisiones
 CLAUDE.md            Instrucciones para trabajar en el repo con Claude Code
@@ -39,18 +43,42 @@ CHANGELOG.md         Historial de versiones
 
 ## Desplegar en Vercel
 
-1. En Vercel: **Add New → Project** e importa este repositorio de GitHub. No hace falta tocar nada: `vercel.json` ya dice cómo construirlo (`node scripts/build-web.js` → `dist/`) y dónde está la función (`api/claude.js`).
-2. Antes de desplegar, en **Settings → Environment Variables** añade:
-   - `ANTHROPIC_API_KEY`: tu clave de la API de Claude (console.anthropic.com). **Obligatoria.**
-   - `REPASO_ACCESS_CODE`: un código que inventes y que solo darás a Julia y a sus amigas. **Muy recomendable**: sin él, cualquiera con el enlace gastaría de tu clave.
-   - Opcionales: `REPASO_MODEL_COMPLEX`, `REPASO_MODEL_DEFAULT`, `REPASO_MODEL_QUICK` (por defecto `claude-opus-5-5`, `claude-sonnet-5-5` y `claude-haiku-5-5`) y `REPASO_MAX_TOKENS` (16000).
-3. Pulsa **Deploy**. La primera vez que alguien use Claude, la app le pide el código de acceso.
+La versión web tiene **cuentas de verdad**: cada persona se registra con email y contraseña y sus datos se guardan en una base de datos (Supabase), así que entra desde cualquier móvil u ordenador. Sin Supabase configurado también funciona, pero entonces cada navegador guarda sus propios datos y no hay cuentas.
 
-Diferencias de la versión web:
-- Los datos se guardan **en el navegador** de cada persona (IndexedDB). Si cambia de móvil, usa *Personalizar → Copia de seguridad*. Para cuentas que se sincronicen entre dispositivos hace falta una base de datos (ver "Lanzamiento fuera de Claude").
-- El uso de Claude se cobra en **tu** cuenta de la API. Pon un límite de gasto mensual en console.anthropic.com.
+### 1. Proyecto en Vercel
+
+En Vercel: **Add New → Project** e importa este repositorio. `vercel.json` ya dice cómo construirlo (`node scripts/build-web.js` → `dist/`) y dónde están las funciones (`api/`).
+
+### 2. Base de datos (Supabase)
+
+1. En el proyecto de Vercel: **Storage → Create Database → Supabase** (o *Connect* si ya tienes uno) y conéctalo al proyecto. Vercel añade solo las variables `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` y sus versiones `NEXT_PUBLIC_…`.
+   *Si prefieres crearlo en supabase.com*, copia de **Project Settings → API** la URL, la clave `anon` (o *publishable*) y la `service_role` (o *secret*) y añádelas a mano con esos nombres.
+2. Abre el proyecto en Supabase → **SQL Editor → New query**, pega entero `supabase/schema.sql` y pulsa **Run**. Crea la tabla `repaso_docs` con sus reglas: cada usuaria solo puede leer y escribir lo suyo.
+3. Supabase → **Authentication → URL Configuration**: en *Site URL* pon la dirección de tu web (`https://….vercel.app`) y añádela también en *Redirect URLs*. Es adonde llevan los correos de confirmar cuenta y cambiar contraseña.
+4. Supabase → **Authentication → Sign In / Providers → Email**:
+   - *Confirm email* activado: al registrarse llega un correo para confirmar. El correo que trae Supabase de serie solo envía unos pocos por hora; si se registran varias a la vez, configura un SMTP propio (*Authentication → Emails → SMTP*) o desactívalo.
+   - *Confirm email* desactivado: entran directamente al crear la cuenta. Es lo más cómodo para un grupo de amigas.
+
+### 3. Claude
+
+En Vercel → **Settings → Environment Variables** añade:
+- `ANTHROPIC_API_KEY`: tu clave de la API de Claude (console.anthropic.com). **Obligatoria.**
+- `REPASO_ACCESS_CODE`: un código que inventes y que solo darás a Julia y a sus amigas. **Muy recomendable**: con cuentas, cualquiera podría registrarse y gastar de tu clave. Se pide una vez y queda guardado en su cuenta.
+- Opcionales: `REPASO_MODEL_COMPLEX`, `REPASO_MODEL_DEFAULT`, `REPASO_MODEL_QUICK` (por defecto `claude-opus-5-5`, `claude-sonnet-5-5` y `claude-haiku-5-5`) y `REPASO_MAX_TOKENS` (16000).
+
+Pon también un límite de gasto mensual en console.anthropic.com: el uso de Claude se cobra en **tu** cuenta de la API.
+
+### 4. Desplegar
+
+**Deployments → ⋯ → Redeploy** (cada vez que cambies variables hay que volver a desplegar). En el registro del build aparece `cuentas: Supabase (…)` si ha encontrado la base de datos.
+
+Cómo comprobar que todo va: crea una cuenta, añade una tarea, entra con la misma cuenta desde otro móvil y mira que aparece; luego pide unos apuntes. Si algo falla, **Vercel → Logs** dice qué.
+
+### Diferencias con la versión de Claude
 - No hay avisos de Google Calendar ni compartir con código (eso necesita estar dentro de Claude).
+- Los cambios hechos en otro dispositivo aparecen al volver a la app o en unos 20 segundos.
 - Las respuestas largas (apuntes completos) pueden tardar; la función admite hasta 300 s (`vercel.json`). Si tu plan de Vercel permite menos, baja `REPASO_MAX_TOKENS` o usa `REPASO_MODEL_COMPLEX=claude-sonnet-5-5`.
+- Como administrador de Supabase puedes ver los datos de todas desde el panel; ninguna usuaria puede ver los de otra.
 
 ## Publicar como artifact de Claude
 
@@ -73,16 +101,18 @@ Diferencias de la versión web:
 ```bash
 pip install playwright && playwright install chromium
 python3 test/e2e.py          # artifact: 171 comprobaciones (E2E_OUT=carpeta para guardar las capturas)
-python3 test/web_smoke.py    # versión web: 15 comprobaciones
-node test/api_test.js        # función de Vercel: 7 comprobaciones
+python3 test/web_smoke.py    # versión web sin cuentas: 15 comprobaciones
+python3 test/web_accounts.py # cuentas con Supabase simulado: 54 comprobaciones
+node test/api_test.js        # funciones de Vercel: 15 comprobaciones
 ```
 
 La prueba no usa red: el runtime de Claude (incluidas las herramientas del chat) y las librerías (pdf.js, mammoth, JSZip, html2pdf, PptxGenJS, marked, DOMPurify) se sustituyen por imitaciones con la misma interfaz. La lectura real de PDF/Word, la generación real de PDF y PowerPoint y Google Calendar se comprueban a mano en Claude.
 
-## Lanzamiento fuera de Claude
+## Lanzamiento abierto
 
-La versión de Vercel ya funciona sin Claude.ai. El siguiente paso para un lanzamiento abierto son **cuentas reales que se sincronicen entre dispositivos**:
+Las cuentas, la base de datos y la API ya funcionan fuera de Claude. Antes de abrirlo a cualquiera:
 
-1. Crea un proyecto en Supabase o Firebase (email y contraseña, Google…).
-2. En `web/claude-web.js`, cambia `db` (hoy IndexedDB) por esa base de datos con la misma interfaz (`doc`, `collection`, `where`, `onSnapshot`…) y `user.id()` por el id de la cuenta. La app no cambia.
-3. En `api/claude.js`, valida la sesión del usuario en vez del código de acceso y pon límites de uso por persona.
+1. **Límite de uso por persona** en `api/claude.js` (por ejemplo, N peticiones al día por cuenta, contadas en una tabla de Supabase), para que nadie gaste de más.
+2. **SMTP propio** en Supabase para los correos de confirmación y de contraseña.
+3. **Política de privacidad y aviso legal**: guardas datos personales de estudiantes.
+4. Iniciar sesión con Google: se activa en Supabase (*Authentication → Providers → Google*) y se añade un botón en `loginPane()`.

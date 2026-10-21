@@ -4,12 +4,17 @@
    Variables de entorno (Vercel → Settings → Environment Variables):
      ANTHROPIC_API_KEY      obligatoria. Tu clave de la API de Claude.
      REPASO_ACCESS_CODE     muy recomendable. Código que piden la app y este endpoint;
-                            sin él, cualquiera con el enlace gastaría de tu clave.
+                            sin él, cualquiera con el enlace (o que se cree una cuenta)
+                            gastaría de tu clave. Con cuentas, se pide una vez por cuenta.
+     SUPABASE_URL y SUPABASE_ANON_KEY (o NEXT_PUBLIC_…, o SUPABASE_PUBLISHABLE_KEY)
+                            cuentas de verdad. Si están, solo se atiende a quien tenga sesión.
      REPASO_MODEL_COMPLEX   opcional (por defecto claude-opus-5-5)
      REPASO_MODEL_DEFAULT   opcional (por defecto claude-sonnet-5-5)
      REPASO_MODEL_QUICK     opcional (por defecto claude-haiku-5-5)
      REPASO_MAX_TOKENS      opcional (por defecto 16000)
 */
+const { config, verifyUser, bearer } = require("../lib/supabase.js");
+
 const MODELS = {
   complex: process.env.REPASO_MODEL_COMPLEX || "claude-opus-5-5",
   default: process.env.REPASO_MODEL_DEFAULT || "claude-sonnet-5-5",
@@ -34,6 +39,11 @@ function validMessages(m) {
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") { res.setHeader("allow", "POST"); return send(res, 405, { error: "method_not_allowed" }); }
+  if (config().enabled) {
+    let user;
+    try { user = await verifyUser(bearer(req)); } catch { return send(res, 502, { error: "supabase_unreachable" }); }
+    if (!user) return send(res, 401, { error: "no_session" });
+  }
   const code = process.env.REPASO_ACCESS_CODE;
   if (code && req.headers["x-repaso-code"] !== code) return send(res, 401, { error: "bad_code" });
   const key = process.env.ANTHROPIC_API_KEY;
