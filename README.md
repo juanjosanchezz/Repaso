@@ -25,17 +25,19 @@ App de estudio que funciona de dos formas: como **artifact de Claude** y como **
 src/repaso.html        La app completa (un único archivo, como exige el artifact)
 web/claude-web.js      Versión web: la misma interfaz de Claude en el navegador (IndexedDB, /api/claude, descargas)
 api/claude.js          Función de Vercel: puente con la API de Claude (tu clave nunca llega al navegador)
-api/account.js         Función de Vercel: borrar la cuenta (usuario de Supabase y todos sus datos)
-lib/supabase.js        Comprobación de la sesión de Supabase en el servidor
-supabase/schema.sql    Tabla y reglas de la base de datos
-scripts/migrate.js     Aplica schema.sql en cada despliegue (con POSTGRES_URL de la integración)
+api/auth.js            Función de Vercel: cuentas (registro, entrar, salir, contraseña, borrar)
+api/docs.js            Función de Vercel: guardar y leer los documentos de la cuenta
+lib/                   db.js (conexión a Neon), auth.js (contraseñas y sesiones), http.js
+db/schema.sql          Tablas de la base de datos (se aplican solas en cada despliegue)
+scripts/migrate.js     Aplica db/schema.sql en cada despliegue
 scripts/build-web.js   Genera dist/index.html para Vercel (sin dependencias)
 vercel.json            Configuración de Vercel
 test/mock-claude.js    Simulación del runtime de Claude: db, user, sample, downloads, mcp
 test/lib-stubs.js      Sustitutos de las librerías CDN para probar sin red
 test/e2e.py            Prueba end-to-end del artifact (Playwright)
 test/web_smoke.py      Prueba de la versión web sin cuentas (código de acceso, streaming, herramientas, datos tras recargar)
-test/web_accounts.py   Prueba de las cuentas con un Supabase simulado (registro, otro dispositivo, sincronización, contraseñas, borrado)
+test/web_accounts.py   Prueba de las cuentas con las funciones reales y un PostgreSQL de verdad
+test/api_server.js     Sirve api/auth y api/docs en local para esa prueba (test/pg-psql.js: consultas vía psql)
 test/api_test.js       Prueba de la función de Vercel
 ARCHITECTURE.md      Módulos, modelo de datos y decisiones
 CLAUDE.md            Instrucciones para trabajar en el repo con Claude Code
@@ -44,42 +46,33 @@ CHANGELOG.md         Historial de versiones
 
 ## Desplegar en Vercel
 
-La versión web tiene **cuentas de verdad**: cada persona se registra con email y contraseña y sus datos se guardan en una base de datos (Supabase), así que entra desde cualquier móvil u ordenador. Sin Supabase configurado también funciona, pero entonces cada navegador guarda sus propios datos y no hay cuentas.
+La versión web tiene **cuentas de verdad**: cada persona se registra con email y contraseña, sus datos se guardan en tu base de datos (Neon) y entra desde cualquier móvil u ordenador. Sin base de datos también funciona, pero cada navegador guarda sus propios datos.
 
-### 1. Proyecto en Vercel
+1. En Vercel: **Add New → Project** e importa este repositorio. `vercel.json` ya dice cómo construirlo.
+2. **Storage → Neon** y conéctalo al proyecto. Nada más: en cada despliegue `scripts/migrate.js` crea o pone al día las tablas (`rp_users`, `rp_sessions`, `rp_docs`). No hay que configurar nada en Neon ni mandar correos.
+3. **Settings → Environment Variables**:
+   - `ANTHROPIC_API_KEY`: tu clave de la API de Claude (console.anthropic.com). **Obligatoria.**
+   - `REPASO_ACCESS_CODE`: un código que inventes y solo des a tus amigas. **Muy recomendable**: con cuentas, cualquiera podría registrarse y gastar de tu clave. Se pide una vez por cuenta.
+   - Opcionales: `REPASO_MODEL_COMPLEX`, `REPASO_MODEL_DEFAULT`, `REPASO_MODEL_QUICK` (por defecto `claude-opus-5-5`, `claude-sonnet-5-5` y `claude-haiku-5-5`) y `REPASO_MAX_TOKENS` (16000).
+4. **Deployments → ⋯ → Redeploy**. En **Deploy Logs** tienen que salir `Base de datos: tablas de Repaso listas.` y `cuentas: sí (base de datos)`.
 
-En Vercel: **Add New → Project** e importa este repositorio. `vercel.json` ya dice cómo construirlo (`node scripts/build-web.js` → `dist/`) y dónde están las funciones (`api/`).
+Pon un límite de gasto mensual en console.anthropic.com: el uso de Claude se cobra en **tu** cuenta de la API.
 
-### 2. Base de datos (Supabase)
+### Si alguien olvida su contraseña
 
-En el proyecto de Vercel: **Storage → Supabase** y conéctalo al proyecto. Tiene que ser **Supabase**, no Neon ni otra base de datos: Supabase trae también las cuentas (registro, contraseñas, correos). Ya está: Vercel añade las variables (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `POSTGRES_URL`…) y en cada despliegue `scripts/migrate.js` crea o pone al día la tabla `repaso_docs` con sus reglas (cada usuaria solo lee y escribe lo suyo). En el registro del build sale `Base de datos: tabla repaso_docs lista.`
+No hay correos, así que la pone quien administra la app. En Vercel → Storage → tu base de datos → **Open in Neon** → **SQL Editor**:
 
-Solo si usas confirmación por correo (en Supabase viene activada):
-- **Authentication → URL Configuration**: pon la dirección de tu web (`https://….vercel.app`) en *Site URL* y en *Redirect URLs*, que es adonde llevan los correos.
-- El correo que trae Supabase de serie solo envía unos pocos por hora. Para un grupo de amigas lo más cómodo es desactivar *Confirm email* en **Authentication → Sign In / Providers → Email**: entran nada más crear la cuenta.
+```sql
+update rp_users set pass_hash = 'temp$UnaProvisional1' where email = 'su-email@ejemplo.com';
+```
 
-*Si creaste Supabase fuera de Vercel*, añade a mano `SUPABASE_URL`, `SUPABASE_ANON_KEY` (o la *publishable*), `SUPABASE_SERVICE_ROLE_KEY` (o la *secret*) y `POSTGRES_URL` (Project Settings → Database → Connection string). Sin `POSTGRES_URL`, pega `supabase/schema.sql` en **SQL Editor** y pulsa **Run**.
-
-### 3. Claude
-
-En Vercel → **Settings → Environment Variables** añade:
-- `ANTHROPIC_API_KEY`: tu clave de la API de Claude (console.anthropic.com). **Obligatoria.**
-- `REPASO_ACCESS_CODE`: un código que inventes y que solo darás a Julia y a sus amigas. **Muy recomendable**: con cuentas, cualquiera podría registrarse y gastar de tu clave. Se pide una vez y queda guardado en su cuenta.
-- Opcionales: `REPASO_MODEL_COMPLEX`, `REPASO_MODEL_DEFAULT`, `REPASO_MODEL_QUICK` (por defecto `claude-opus-5-5`, `claude-sonnet-5-5` y `claude-haiku-5-5`) y `REPASO_MAX_TOKENS` (16000).
-
-Pon también un límite de gasto mensual en console.anthropic.com: el uso de Claude se cobra en **tu** cuenta de la API.
-
-### 4. Desplegar
-
-**Deployments → ⋯ → Redeploy** (cada vez que cambies variables hay que volver a desplegar). En el registro del build aparecen `Base de datos: tabla repaso_docs lista.` y `cuentas: Supabase (…)`.
-
-Cómo comprobar que todo va: crea una cuenta, añade una tarea, entra con la misma cuenta desde otro móvil y mira que aparece; luego pide unos apuntes. Si algo falla, **Vercel → Logs** dice qué.
+Le dices `UnaProvisional1`; al entrar con ella se guarda cifrada y luego la puede cambiar en Personalizar. No pierde nada.
 
 ### Diferencias con la versión de Claude
 - No hay avisos de Google Calendar ni compartir con código (eso necesita estar dentro de Claude).
 - Los cambios hechos en otro dispositivo aparecen al volver a la app o en unos 20 segundos.
 - Las respuestas largas (apuntes completos) pueden tardar; la función admite hasta 300 s (`vercel.json`). Si tu plan de Vercel permite menos, baja `REPASO_MAX_TOKENS` o usa `REPASO_MODEL_COMPLEX=claude-sonnet-5-5`.
-- Como administrador de Supabase puedes ver los datos de todas desde el panel; ninguna usuaria puede ver los de otra.
+- Las contraseñas se guardan cifradas (scrypt). Como administrador ves en Neon los datos de todas; ninguna usuaria puede ver los de otra.
 
 ## Publicar como artifact de Claude
 
@@ -103,8 +96,8 @@ Cómo comprobar que todo va: crea una cuenta, añade una tarea, entra con la mis
 pip install playwright && playwright install chromium
 python3 test/e2e.py          # artifact: 171 comprobaciones (E2E_OUT=carpeta para guardar las capturas)
 python3 test/web_smoke.py    # versión web sin cuentas: 15 comprobaciones
-python3 test/web_accounts.py # cuentas con Supabase simulado: 54 comprobaciones
-node test/api_test.js        # funciones de Vercel: 15 comprobaciones
+python3 test/web_accounts.py # cuentas con PostgreSQL real: 48 comprobaciones (necesita PostgreSQL instalado)
+node test/api_test.js        # funciones de Vercel: 18 comprobaciones
 node test/migrate_test.js    # migración de la base de datos: 7 comprobaciones
 ```
 
@@ -114,7 +107,6 @@ La prueba no usa red: el runtime de Claude (incluidas las herramientas del chat)
 
 Las cuentas, la base de datos y la API ya funcionan fuera de Claude. Antes de abrirlo a cualquiera:
 
-1. **Límite de uso por persona** en `api/claude.js` (por ejemplo, N peticiones al día por cuenta, contadas en una tabla de Supabase), para que nadie gaste de más.
-2. **SMTP propio** en Supabase para los correos de confirmación y de contraseña.
+1. **Límite de uso por persona** en `api/claude.js` (por ejemplo, N peticiones al día por cuenta, contadas en una tabla), para que nadie gaste de más.
+2. **Límite de intentos de inicio de sesión** y **recuperar contraseña por correo** (con un servicio como Resend).
 3. **Política de privacidad y aviso legal**: guardas datos personales de estudiantes.
-4. Iniciar sesión con Google: se activa en Supabase (*Authentication → Providers → Google*) y se añade un botón en `loginPane()`.

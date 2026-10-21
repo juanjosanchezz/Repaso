@@ -1,5 +1,12 @@
 # Cambios
 
+## 4.3 — 21 oct 2026
+- Cuentas con **Neon** en lugar de Supabase: basta con conectar Neon en Vercel y desplegar. Sin correos de confirmación ni ajustes fuera de Vercel.
+- Funciones propias `/api/auth` (registro, entrar, salir, cambiar contraseña, borrar cuenta) y `/api/docs` (documentos de la cuenta). Contraseñas con scrypt; sesiones con token cuyo hash se guarda en la base de datos.
+- Cambiar la contraseña cierra las demás sesiones. Contraseña provisional del administrador desde el SQL Editor de Neon.
+- Las tablas se crean solas en cada despliegue (`db/schema.sql`).
+- Pruebas: 48 de cuentas contra PostgreSQL real; 18 de las funciones.
+
 ## 4.2.1 — 21 oct 2026
 - La tabla de la base de datos se crea sola en cada despliegue (`scripts/migrate.js` con la conexión de la integración de Supabase): basta con conectar Supabase en Vercel y desplegar.
 - La app reconoce el aviso de "tabla que falta" de las versiones nuevas de Supabase.

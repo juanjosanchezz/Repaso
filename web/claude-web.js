@@ -3,26 +3,24 @@
    Implementa en el navegador la misma interfaz `window.claude.use(name)` que
    Repaso usa dentro de Claude, para que src/repaso.html funcione en una web normal:
 
-   - account    Cuentas de verdad (email y contraseña) con Supabase Auth.
-                Solo existe si hay Supabase configurado (window.__REPASO_CONFIG__).
-   - db         Base de datos de documentos. Con Supabase: tabla `repaso_docs`
-                (una fila por documento, solo visible para su dueña) con copia en
-                memoria y sincronización entre dispositivos. Sin Supabase: IndexedDB
-                de este navegador.
-   - user       Identidad: la cuenta de Supabase o, sin Supabase, este navegador.
+   - account    Cuentas de verdad (email y contraseña) con /api/auth. Solo existe si el
+                build encontró base de datos (window.__REPASO_CONFIG__.accounts).
+   - db         Base de datos de documentos. Con cuentas: copia en memoria de los documentos
+                de la usuaria, guardados con /api/docs (Neon) y sincronizados entre
+                dispositivos. Sin cuentas: IndexedDB de este navegador.
+   - user       Identidad: la cuenta o, sin cuentas, este navegador.
    - sample     Claude a través de /api/claude (función de Vercel con tu API key),
                 con streaming, imágenes, JSON y herramientas.
    - downloads  Descarga normal de archivos.
    - mcp        No disponible en la web (Google Calendar solo funciona dentro de Claude).
 
    Se inserta antes de la app en dist/index.html (scripts/build-web.js), que
-   también escribe window.__REPASO_CONFIG__ con la URL y la clave pública de Supabase. */
+   también escribe window.__REPASO_CONFIG__ (si hay cuentas). */
 (() => {
   "use strict";
   window.__REPASO_WEB__ = true;
   const CFG = window.__REPASO_CONFIG__ || {};
-  const SB = CFG.supabaseUrl && CFG.supabaseKey ? { url: String(CFG.supabaseUrl).replace(/\/+$/, ""), key: String(CFG.supabaseKey) } : null;
-  const TABLE = "repaso_docs";
+  const ACCOUNTS = !!CFG.accounts;
 
   const err = (code, message) => ({ code, message });
   const ls = {
@@ -74,7 +72,7 @@
   const tooBig = o => new Blob([JSON.stringify(o)]).size > 262144;
   function deepMerge(a, b) { const o = { ...a }; for (const [k, v] of Object.entries(b)) { if (v && typeof v === "object" && !Array.isArray(v) && o[k] && typeof o[k] === "object" && !Array.isArray(o[k])) o[k] = deepMerge(o[k], v); else o[k] = v; } return o; }
 
-  /* ── db: guardado local (sin Supabase) ──────────────────────────── */
+  /* ── db: guardado local (sin cuentas) ───────────────────────────── */
   const IDB = { name: "repaso-web", store: "docs", db: null };
   function idbOpen() {
     return new Promise((res, rej) => {
@@ -101,60 +99,32 @@
     catch (e) { console.warn("Repaso: no se pudo guardar", e); }
   }
 
-  /* ── Supabase: sesión y peticiones ──────────────────────────────── */
-  const SKEY = "repaso.sb.session";
+  /* ── Cuentas: sesión y peticiones a /api/auth y /api/docs ───────── */
+  const SKEY = "repaso.session.v2";
   const Cloud = { session: null, since: null, pulling: false, timer: null };
   const changeCbs = new Set();
-  const isJwt = k => /^eyJ/.test(k);
 
-  const AUTH_CODES = {
-    invalid_credentials: "invalid_credentials", invalid_grant: "invalid_credentials",
-    email_not_confirmed: "not_confirmed", user_already_exists: "exists", email_exists: "exists",
-    weak_password: "weak_password", same_password: "same_password",
-    email_address_invalid: "invalid_email", validation_failed: "invalid_email", email_address_not_authorized: "invalid_email",
-    over_email_send_rate_limit: "rate_limited", over_request_rate_limit: "rate_limited", over_sms_send_rate_limit: "rate_limited",
-    signup_disabled: "signup_disabled", email_provider_disabled: "signup_disabled",
-    refresh_token_not_found: "unauthorized", refresh_token_already_used: "unauthorized", session_not_found: "unauthorized", bad_jwt: "unauthorized", user_not_found: "unauthorized",
-  };
-  function sbError(status, j) {
-    const raw = j?.error_code || (typeof j?.code === "string" ? j.code : "") || j?.error || "";
-    const msg = j?.msg || j?.message || j?.error_description || "";
-    let code = AUTH_CODES[raw];
-    if (!code && /already (been )?registered|already exists/i.test(msg)) code = "exists";
-    if (!code && /invalid login/i.test(msg)) code = "invalid_credentials";
-    if (!code && /not confirmed/i.test(msg)) code = "not_confirmed";
-    if (!code && /password/i.test(msg) && (status === 400 || status === 422)) code = "weak_password";
-    if (!code && /email/i.test(msg) && (status === 400 || status === 422)) code = "invalid_email";
-    if (!code && status === 429) code = "rate_limited";
-    if (!code && (status === 401 || status === 403 || raw === "PGRST301" || raw === "PGRST303")) code = "unauthorized";
-    if (!code && (raw === "42P01" || raw === "PGRST205")) code = "no_table";
-    if (!code && status === 404 && /relation|table|schema cache/i.test(msg)) code = "no_table";
-    return { code: code || "unavailable", message: msg || "Error " + status, status };
-  }
-  async function sbFetch(path, { method = "GET", body, token, headers = {} } = {}) {
-    const h = { apikey: SB.key, ...headers };
+  async function api(path, { method = "GET", body, auth = true } = {}) {
+    const h = {};
     if (body !== undefined) h["content-type"] = "application/json";
-    if (token) h.authorization = "Bearer " + token; else if (isJwt(SB.key)) h.authorization = "Bearer " + SB.key;
+    if (auth && Cloud.session) h.authorization = "Bearer " + Cloud.session.token;
     let r;
-    try { r = await fetch(SB.url + path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) }); }
-    catch { throw err("unavailable", "Sin conexión con la base de datos"); }
-    const text = await r.text().catch(() => "");
-    let j = null; try { j = text ? JSON.parse(text) : null; } catch {}
-    if (!r.ok) throw sbError(r.status, j);
+    try { r = await fetch(path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) }); }
+    catch { throw err("unavailable", "Sin conexión con el servidor"); }
+    const j = await r.json().catch(() => null);
+    if (!r.ok) {
+      const code = j?.error === "no_session" ? "unauthorized" : j?.error || (r.status === 429 ? "rate_limited" : "unavailable");
+      if (code === "unauthorized" && auth && Cloud.session) expire();
+      throw { code, message: j?.error || "Error " + r.status, status: r.status };
+    }
     return j;
   }
-  function setSession(j, user) {
-    const u = user || j.user;
-    if (!j?.access_token || !u?.id) throw err("unavailable", "Respuesta de sesión incompleta");
-    Cloud.session = {
-      access_token: j.access_token, refresh_token: j.refresh_token || Cloud.session?.refresh_token || "",
-      expires_at: Number(j.expires_at) || Math.floor(Date.now() / 1000) + (Number(j.expires_in) || 3600),
-      user: { id: u.id, email: u.email || "", meta: u.user_metadata || {} },
-    };
+  function setSession(j) {
+    Cloud.session = { token: j.token, user: { id: j.user.id, email: j.user.email, name: j.user.name || "", meta: j.user.meta || {} } };
     ls.set(SKEY, JSON.stringify(Cloud.session));
   }
   function readSession() {
-    try { const s = JSON.parse(ls.get(SKEY) || "null"); return s?.access_token && s?.user?.id ? s : null; } catch { return null; }
+    try { const s = JSON.parse(ls.get(SKEY) || "null"); return s?.token && s?.user?.id ? s : null; } catch { return null; }
   }
   function dropSession() {
     Cloud.session = null; Cloud.since = null; ls.del(SKEY); ls.del("repaso.web.code");
@@ -164,36 +134,12 @@
   /** La sesión ya no vale (contraseña cambiada en otro sitio, cuenta borrada…). */
   function expire() { if (!Cloud.session) return; dropSession(); for (const f of [...changeCbs]) { try { f(null); } catch (e) { console.error(e); } } }
 
-  let refreshing = null;
-  function refresh() {
-    if (refreshing) return refreshing;
-    refreshing = (async () => {
-      try {
-        const j = await sbFetch("/auth/v1/token?grant_type=refresh_token", { method: "POST", body: { refresh_token: Cloud.session?.refresh_token || "" } });
-        setSession(j); return Cloud.session;
-      } catch (e) {
-        if (e.code !== "unavailable" && e.code !== "rate_limited") expire();
-        throw e.code === "unavailable" || e.code === "rate_limited" ? e : err("unauthorized", "Tu sesión ha caducado");
-      } finally { refreshing = null; }
-    })();
-    return refreshing;
-  }
-  async function accessToken() {
-    if (!Cloud.session) throw err("unauthorized", "No hay sesión");
-    if (Cloud.session.expires_at * 1000 - Date.now() > 60000) return Cloud.session.access_token;
-    return (await refresh()).access_token;
-  }
-  async function rest(path, opts = {}, retry = true) {
-    try { return await sbFetch("/rest/v1/" + path, { ...opts, token: await accessToken() }); }
-    catch (e) { if (e.code === "unauthorized" && retry && Cloud.session) { await refresh(); return rest(path, opts, false); } throw e; }
-  }
-
-  /* ── db: guardado en Supabase ───────────────────────────────────── */
+  /* ── db: guardado en la cuenta ──────────────────────────────────── */
   const prefix = () => `data/users/${Cloud.session.user.id}/`;
   async function loadAll() {
     const pre = prefix(), rows = [];
     for (let off = 0; ; off += 1000) {
-      const page = await rest(`${TABLE}?select=path,data,updated_at&deleted=is.false&order=path.asc&limit=1000&offset=${off}`);
+      const page = (await api(`/api/docs?offset=${off}&limit=1000`)).rows;
       rows.push(...page);
       if (page.length < 1000) break;
     }
@@ -208,7 +154,7 @@
     try {
       const pre = prefix(); let changed = false;
       for (let n = 0; n < 20; n++) {
-        const rows = await rest(`${TABLE}?select=path,data,deleted,updated_at&order=updated_at.asc&limit=1000` + (Cloud.since ? `&updated_at=gt.${encodeURIComponent(Cloud.since)}` : ""));
+        const rows = (await api(`/api/docs?limit=1000&since=${encodeURIComponent(Cloud.since || "1970-01-01T00:00:00.000000Z")}`)).rows;
         for (const r of rows) {
           Cloud.since = r.updated_at;
           const k = pre + r.path; if (pending.has(k)) continue;
@@ -225,7 +171,7 @@
     clearInterval(Cloud.timer);
     Cloud.timer = setInterval(() => { if (document.visibilityState === "visible") pull(); }, 20000);
   }
-  if (SB) {
+  if (ACCOUNTS) {
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pull(); });
     window.addEventListener("online", () => pull());
   }
@@ -233,16 +179,13 @@
     if (!Cloud.session) throw err("unauthorized", "No hay sesión");
     const pre = prefix();
     if (!path.startsWith(pre)) throw err("invalid_argument", "Ruta fuera de tu cuenta: " + path);
-    await rest(`${TABLE}?on_conflict=user_id,path`, {
-      method: "POST", headers: { prefer: "resolution=merge-duplicates,return=minimal" },
-      body: { user_id: Cloud.session.user.id, path: path.slice(pre.length), data: doc === undefined ? null : doc, deleted: doc === undefined },
-    });
+    await api("/api/docs", { method: "POST", body: { path: path.slice(pre.length), data: doc === undefined ? null : doc, deleted: doc === undefined } });
   }
 
   /* ── db: escritura (local o en la nube) ─────────────────────────── */
   const pending = new Map();
   function persist(path, doc) {
-    if (!SB) { idbPut(path, doc); return Promise.resolve(); }
+    if (!ACCOUNTS) { idbPut(path, doc); return Promise.resolve(); }
     const prev = pending.get(path) || Promise.resolve();
     const p = prev.catch(() => {}).then(() => cloudPut(path, doc));
     pending.set(path, p);
@@ -268,7 +211,7 @@
       get: () => tick(snapDoc(path)),
       set: async d => { if (!d || typeof d !== "object" || Array.isArray(d)) throw err("invalid_argument", "El documento tiene que ser un objeto"); const c = clone(d); if (tooBig(c)) throw err("invalid_argument", "Documento de más de 256 KiB"); await write(path, c); await tick(); },
       update: async d => { if (!store.has(path)) throw err("invalid_argument", "No existe el documento " + path); const m = deepMerge(store.get(path), clone(d)); if (tooBig(m)) throw err("invalid_argument", "Documento de más de 256 KiB"); await write(path, m); await tick(); },
-      delete: async () => { if (SB && !store.has(path)) return; await write(path, undefined); await tick(); },
+      delete: async () => { if (ACCOUNTS && !store.has(path)) return; await write(path, undefined); await tick(); },
       acquire: async () => ({ acquired: true }),
       onSnapshot: next => { const l = { kind: "doc", path, next }; listeners.add(l); setTimeout(() => listeners.has(l) && next(snapDoc(path)), 0); return () => listeners.delete(l); },
       collection: sub => colRef(path + "/" + sub),
@@ -287,97 +230,64 @@
   function colRef(path) { checkPath(path, false); return { ...query(path), path, doc: id => docRef(path + "/" + (id || rid())), add: async d => { const r = docRef(path + "/" + rid()); await r.set(d); return r; } }; }
   const db = { doc: docRef, collection: colRef };
 
-  /* ── account: cuentas con Supabase Auth ─────────────────────────── */
-  const backTo = () => location.origin + location.pathname;
+  /* ── account: cuentas propias (email y contraseña) ──────────────── */
   async function afterLogin() {
     const c = Cloud.session.user.meta?.repaso_code;
     if (c) ls.set("repaso.web.code", c);
     await loadAll();
     startSync();
   }
-  const account = SB && {
+  const account = ACCOUNTS && {
     /** Se resuelve cuando ya se sabe si hay sesión y, si la hay, con sus datos cargados. */
     ready: null,
-    /** true si se ha entrado con un enlace de "cambiar contraseña". */
-    recovery: false,
-    /** Aviso para la pantalla de acceso (enlace caducado, sin conexión…). */
+    /** Esta versión no manda correos: no hay recuperación de contraseña por email. */
+    canReset: false,
+    /** Aviso para la pantalla de acceso (sin conexión, base de datos sin preparar…). */
     notice: null,
     session: () => (Cloud.session ? { id: Cloud.session.user.id, email: Cloud.session.user.email } : null),
     async signUp({ email, password, name }) {
-      const j = await sbFetch(`/auth/v1/signup?redirect_to=${encodeURIComponent(backTo())}`, { method: "POST", body: { email, password, data: { name: name || "" } } });
-      if (j?.access_token) { setSession(j); await afterLogin(); return { status: "signed_in" }; }
-      // Con confirmación por correo no hay sesión todavía. Si el email ya tenía cuenta, Supabase
-      // devuelve un usuario sin identidades (para no revelar qué correos están registrados).
-      if (j && Array.isArray(j.identities) && j.identities.length === 0) throw err("exists", "Ya hay una cuenta con ese email");
-      return { status: "confirm" };
+      setSession(await api("/api/auth", { method: "POST", auth: false, body: { action: "signup", email, password, name: name || "" } }));
+      await afterLogin();
+      return { status: "signed_in" };
     },
     async signIn({ email, password }) {
-      const j = await sbFetch("/auth/v1/token?grant_type=password", { method: "POST", body: { email, password } });
-      setSession(j); await afterLogin(); return account.session();
+      setSession(await api("/api/auth", { method: "POST", auth: false, body: { action: "login", email, password } }));
+      await afterLogin();
+      return account.session();
     },
     async signOut() {
-      const t = Cloud.session?.access_token;
-      dropSession();
-      // scope=local: cierra solo este dispositivo (por defecto Supabase cerraría todos).
-      if (t) await sbFetch("/auth/v1/logout?scope=local", { method: "POST", token: t }).catch(() => {});
-    },
-    async resend(email) {
-      await sbFetch(`/auth/v1/resend?redirect_to=${encodeURIComponent(backTo())}`, { method: "POST", body: { type: "signup", email } });
-    },
-    async resetPassword(email) {
-      await sbFetch(`/auth/v1/recover?redirect_to=${encodeURIComponent(backTo())}`, { method: "POST", body: { email } });
-    },
-    async updatePassword(password) {
-      const j = await sbFetch("/auth/v1/user", { method: "PUT", token: await accessToken(), body: { password } });
-      account.recovery = false;
-      return !!j;
-    },
-    /** Borra la cuenta (y, en cascada, todos sus datos) con /api/account. */
-    async deleteAccount() {
-      let r;
-      try { r = await fetch("/api/account", { method: "DELETE", headers: { authorization: "Bearer " + await accessToken() } }); }
-      catch { throw err("unavailable", "Sin conexión con el servidor"); }
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw err(j?.error === "missing_service_key" ? "not_configured" : "unavailable", j?.error || "Error " + r.status);
+      if (Cloud.session) await api("/api/auth", { method: "POST", body: { action: "logout" } }).catch(() => {});
       dropSession();
     },
+    async updatePassword(password) { await api("/api/auth", { method: "POST", body: { action: "password", password } }); return true; },
+    /** Borra la cuenta y, en cascada, todos sus datos. */
+    async deleteAccount() { await api("/api/auth", { method: "POST", body: { action: "delete" } }); dropSession(); },
     onChange(f) { changeCbs.add(f); return () => changeCbs.delete(f); },
   };
   async function initCloud() {
-    const h = new URLSearchParams(location.hash.replace(/^#/, ""));
-    const clean = () => { try { history.replaceState(null, "", location.pathname + location.search); } catch {} };
-    if (h.get("access_token")) {
-      // Vuelve de un enlace del correo (confirmar cuenta o cambiar contraseña).
-      try { const u = await sbFetch("/auth/v1/user", { token: h.get("access_token") }); setSession({ access_token: h.get("access_token"), refresh_token: h.get("refresh_token"), expires_at: h.get("expires_at"), expires_in: h.get("expires_in") }, u); account.recovery = h.get("type") === "recovery"; }
-      catch { account.notice = "El enlace no es válido o ha caducado. Inicia sesión o pide otro."; }
-      clean();
-    } else if (h.get("error") || h.get("error_code") || h.get("error_description")) {
-      account.notice = h.get("error_code") === "otp_expired" ? "El enlace ha caducado. Inicia sesión o pide otro." : "El enlace no es válido o ha caducado. Inicia sesión o pide otro.";
-      clean();
-    } else Cloud.session = readSession();
+    Cloud.session = readSession();
     if (!Cloud.session) return;
-    try { await accessToken(); await afterLogin(); }
-    catch (e) {
+    try {
+      const j = await api("/api/auth");
+      Cloud.session.user = { ...Cloud.session.user, ...j.user }; ls.set(SKEY, JSON.stringify(Cloud.session));
+      await afterLogin();
+    } catch (e) {
       if (!Cloud.session) account.notice = "Tu sesión ha caducado. Vuelve a entrar.";
-      else { account.notice = e?.code === "no_table" ? "Falta preparar la base de datos (supabase/schema.sql). Avisa a quien publica Repaso." : "No se pudo conectar con tu cuenta. Revisa la conexión y recarga la página."; account.offline = true; }
+      else { account.notice = e?.code === "no_table" ? "Falta preparar la base de datos de Repaso. Avisa a quien la publica." : "No se pudo conectar con tu cuenta. Revisa la conexión y recarga la página."; account.offline = true; }
     }
   }
-  if (account) {
-    account.ready = initCloud();
-    // Un enlace del correo abierto en una pestaña donde Repaso ya estaba abierto solo cambia el #…
-    window.addEventListener("hashchange", () => { if (/(^|[#&])(access_token|error_code|error)=/.test(location.hash)) location.reload(); });
-  }
-  const ready = SB ? account.ready : idbLoad();
+  if (account) account.ready = initCloud();
+  const ready = ACCOUNTS ? account.ready : idbLoad();
 
   /* ── user ───────────────────────────────────────────────────────── */
   function localId() {
     try { let id = localStorage.getItem("repaso.web.uid"); if (!id) { id = "u_" + rid(22); localStorage.setItem("repaso.web.uid", id); } return id; }
     catch { return window.__repasoTmpId ||= "u_" + rid(22); }
   }
-  const user = SB ? {
+  const user = ACCOUNTS ? {
     id: async () => (account.offline ? null : Cloud.session?.user.id || null),
-    me: async () => (Cloud.session ? { id: Cloud.session.user.id, name: Cloud.session.user.meta?.name || "", email: Cloud.session.user.email, isMe: true } : null),
-    name: async () => Cloud.session?.user.meta?.name || "",
+    me: async () => (Cloud.session ? { id: Cloud.session.user.id, name: Cloud.session.user.name || "", email: Cloud.session.user.email, isMe: true } : null),
+    name: async () => Cloud.session?.user.name || "",
     can: async () => true, canEdit: async () => true, isOwner: async () => true, profiles: async () => ({}), search: async () => [],
   } : (() => {
     const uid = localId();
@@ -415,8 +325,8 @@
   function rememberCode() {
     const c = codeToSave; codeToSave = null;
     if (!c || !Cloud.session || Cloud.session.user.meta?.repaso_code === c) return;
-    accessToken().then(t => sbFetch("/auth/v1/user", { method: "PUT", token: t, body: { data: { repaso_code: c } } }))
-      .then(u => { if (Cloud.session && u?.user_metadata) { Cloud.session.user.meta = u.user_metadata; ls.set(SKEY, JSON.stringify(Cloud.session)); } })
+    api("/api/auth", { method: "POST", body: { action: "meta", data: { repaso_code: c } } })
+      .then(j => { if (Cloud.session && j?.user) { Cloud.session.user.meta = j.user.meta; ls.set(SKEY, JSON.stringify(Cloud.session)); } })
       .catch(() => {});
   }
 
@@ -447,16 +357,13 @@
   /** Una ronda: POST a /api/claude y lectura del stream SSE de la API de Claude. */
   async function round(body, signal, onDelta, retried) {
     const headers = { "content-type": "application/json", "x-repaso-code": getCode() };
-    if (Cloud.session) { try { headers.authorization = "Bearer " + await accessToken(); } catch (e) { throw e.code === "unavailable" ? err("upstream_error", "Sin conexión con el servidor") : err("not_granted", "Tu sesión ha caducado. Vuelve a entrar."); } }
+    if (Cloud.session) headers.authorization = "Bearer " + Cloud.session.token;
     let r;
     try { r = await fetch(ENDPOINT, { method: "POST", headers, body: JSON.stringify(body), signal }); }
     catch (e) { if (e?.name === "AbortError") throw err("cancelled", "Cancelado"); throw err("upstream_error", "Sin conexión con el servidor"); }
     if (r.status === 401) {
       const j = await r.json().catch(() => ({}));
-      if (j?.error === "no_session") {
-        if (!retried && Cloud.session) { try { await refresh(); return round(body, signal, onDelta, true); } catch {} }
-        throw err("not_granted", "Tu sesión ha caducado. Vuelve a entrar.");
-      }
+      if (j?.error === "no_session") { expire(); throw err("not_granted", "Tu sesión ha caducado. Vuelve a entrar."); }
       if (!retried && await askCode(!!getCode())) return round(body, signal, onDelta, true);
       throw err("not_granted", "Falta el código de acceso");
     }

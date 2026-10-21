@@ -6,14 +6,15 @@
      REPASO_ACCESS_CODE     muy recomendable. Código que piden la app y este endpoint;
                             sin él, cualquiera con el enlace (o que se cree una cuenta)
                             gastaría de tu clave. Con cuentas, se pide una vez por cuenta.
-     SUPABASE_URL y SUPABASE_ANON_KEY (o NEXT_PUBLIC_…, o SUPABASE_PUBLISHABLE_KEY)
-                            cuentas de verdad. Si están, solo se atiende a quien tenga sesión.
+     DATABASE_URL           (la pone la integración de Neon) cuentas de verdad: si está,
+                            solo se atiende a quien tenga sesión.
      REPASO_MODEL_COMPLEX   opcional (por defecto claude-opus-5-5)
      REPASO_MODEL_DEFAULT   opcional (por defecto claude-sonnet-5-5)
      REPASO_MODEL_QUICK     opcional (por defecto claude-haiku-5-5)
      REPASO_MAX_TOKENS      opcional (por defecto 16000)
 */
-const { config, verifyUser, bearer } = require("../lib/supabase.js");
+const { enabled: accounts } = require("../lib/db.js");
+const { userFromReq } = require("../lib/auth.js");
 
 const MODELS = {
   complex: process.env.REPASO_MODEL_COMPLEX || "claude-opus-5-5",
@@ -39,9 +40,9 @@ function validMessages(m) {
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") { res.setHeader("allow", "POST"); return send(res, 405, { error: "method_not_allowed" }); }
-  if (config().enabled) {
+  if (accounts()) {
     let user;
-    try { user = await verifyUser(bearer(req)); } catch { return send(res, 502, { error: "supabase_unreachable" }); }
+    try { user = await userFromReq(req); } catch { return send(res, 502, { error: "db_unreachable" }); }
     if (!user) return send(res, 401, { error: "no_session" });
   }
   const code = process.env.REPASO_ACCESS_CODE;

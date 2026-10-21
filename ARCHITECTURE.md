@@ -10,7 +10,7 @@ Un solo archivo (`src/repaso.html`): `<style>` con tokens de diseño y un `<scri
 | 1 | Utils | `$`, `esc` (escapar HTML), fechas locales (`todayISO`, `addDays`, `daysUntil`), `local` (localStorage con try/catch), iconos SVG, `md()` (marked + DOMPurify) |
 | 2 | Libs | Carga diferida y con versión fija de pdf.js, mammoth, JSZip y html2pdf desde cdnjs |
 | 3 | Platform | `usePlatform()` obtiene `db`, `user`, `sample`, `downloads`, `mcp` y `account` (solo en la web con cuentas); cualquiera puede ser `null`. `prefs()` / `applyPrefs()` |
-| 4 | Auth | Adaptador de cuenta: `signUp`, `signIn`, `signOut`, `hasSession`, `createProfile`, `pending`. Dentro de Claude: sesión de Claude + marca local. En la web con Supabase (`S.account`): email y contraseña |
+| 4 | Auth | Adaptador de cuenta: `signUp`, `signIn`, `signOut`, `hasSession`, `createProfile`, `pending`. Dentro de Claude: sesión de Claude + marca local. En la web con base de datos (`S.account`): email y contraseña |
 | 5 | Repo | Toda la lectura y escritura de datos. Suscripciones de app (asignaturas, temas, exámenes, tareas, SRS, estadísticas) y por asignatura (archivos, material) |
 | 6 | SRS + Stats | Repaso espaciado tipo Leitner (cajas 0–5: 0/1/3/7/14/30 días) con límite diario de tarjetas nuevas. Racha, resultados, medias y temas flojos |
 | 7 | Extract | Texto de PDF (y OCR con Claude si está escaneado), DOCX, PPTX, TXT/MD/CSV e imágenes |
@@ -87,20 +87,21 @@ Vercel: api/claude.js  → comprueba REPASO_ACCESS_CODE → API de Claude (strea
 
 La app detecta la versión web con `WEB` y esconde lo que solo existe dentro de Claude (Google Calendar con `calOK()`, compartir con `shareOK()`), y añade la copia de seguridad.
 
-### Cuentas (Supabase)
+### Cuentas (Neon)
 
-Si el build encuentra `SUPABASE_URL` y la clave pública, escribe `window.__REPASO_CONFIG__` y el shim pasa a modo cuentas:
+Si el build encuentra `DATABASE_URL` (integración de Neon), escribe `window.__REPASO_CONFIG__ = {accounts:true}` y el shim pasa a modo cuentas:
 
 ```
-account   → Supabase Auth por REST: signUp, signIn, signOut (scope=local), resend, resetPassword, updatePassword, deleteAccount (/api/account)
-            vuelve de los enlaces del correo leyendo #access_token…&type=signup|recovery
-db        → copia en memoria de las filas de la usuaria (se cargan al entrar) + escritura en `repaso_docs` (upsert por fila)
-            borrar = fila con deleted=true, para que los otros dispositivos se enteren
-            sincroniza trayendo lo cambiado desde el último updated_at (al volver a la app, al recuperar conexión y cada 20 s)
-sample    → manda también la sesión (Authorization: Bearer); /api/claude la comprueba con Supabase
+account   → /api/auth: signup, login, logout (solo esta sesión), password (cierra las demás), meta, delete
+db        → copia en memoria de los documentos de la usuaria (se cargan al entrar) + /api/docs (upsert por documento)
+            borrar = deleted=true, para que los otros dispositivos se enteren
+            sincroniza pidiendo lo cambiado desde el último updated_at (al volver a la app, al recuperar conexión y cada 20 s)
+sample    → manda también la sesión (Authorization: Bearer); /api/claude la comprueba
 ```
 
-- `repaso_docs (user_id, path, data jsonb, deleted, updated_at)`: `path` es la ruta dentro de la cuenta (`profile`, `profile/subjects/<id>`…). Las reglas (RLS) solo dejan leer y escribir filas con `user_id = auth.uid()`. `updated_at` lo pone un trigger del servidor.
+- Tablas (`db/schema.sql`, aplicado por `scripts/migrate.js` en cada build): `rp_users (email único en minúsculas, pass_hash scrypt, name, meta)`, `rp_sessions (token_hash sha256, last_used; caducan a los 180 días sin uso)`, `rp_docs (user_id, path, data jsonb, deleted, updated_at)`. Borrar la usuaria borra en cascada sesiones y documentos.
+- El navegador nunca habla con la base de datos: solo con `api/`, que filtra siempre por la usuaria de la sesión.
+- Contraseña provisional del administrador: `pass_hash = 'temp$…'` desde el SQL Editor de Neon; al entrar se guarda cifrada.
 - Las escrituras de un mismo documento van en cola; si una falla, se deshace en la copia local y la app ve el error de siempre (`dbErr`).
-- El flujo en la app: `startSession()` escucha el perfil y decide: a la app, a terminar el registro (cuenta sin perfil; si hay un registro pendiente de confirmar en este navegador, lo crea solo) o al acceso. Cerrar sesión y caducar la sesión recargan la página para no dejar nada en memoria.
-- El código de acceso de Claude se guarda en los metadatos de la cuenta (`repaso_code`) para pedirlo una sola vez.
+- En la app, `startSession()` escucha el perfil y decide: a la app, a terminar el registro (cuenta sin perfil) o al acceso. Cerrar sesión y caducar la sesión recargan la página para no dejar nada en memoria.
+- El código de acceso de Claude se guarda en `meta.repaso_code` para pedirlo una sola vez por cuenta.

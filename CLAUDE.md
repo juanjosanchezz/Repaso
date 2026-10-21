@@ -24,7 +24,7 @@ Tiene que acabar en `N/N comprobaciones correctas` y sin errores de JavaScript. 
 
 `web/claude-web.js` imita la interfaz `window.claude.use()` del artifact; si la app usa una capacidad nueva, añádela ahí también (o comprueba `WEB` en la app y escóndela). `dist/` se genera con `node scripts/build-web.js`: no se edita a mano ni se sube a git.
 
-Cuentas: `account` solo existe en la web con Supabase. Lo de cuentas va en `Auth` (módulo 4) y en las pantallas de acceso; comprueba `Auth.real`, nunca `WEB`, para distinguir cuentas de verdad. Su recorrido se prueba en `test/web_accounts.py` (Supabase simulado). La clave secreta de Supabase solo se usa en `api/`; al navegador solo va la pública. Si cambias la tabla, actualiza `supabase/schema.sql` (que se pueda ejecutar más de una vez): `scripts/migrate.js` lo aplica en cada despliegue.
+Cuentas: `account` solo existe en la web con base de datos (Neon). Lo de cuentas va en `Auth` (módulo 4) y en las pantallas de acceso; comprueba `Auth.real`, nunca `WEB`, para distinguir cuentas de verdad. En el servidor: `api/auth.js`, `api/docs.js` y `lib/`; toda consulta filtra por la usuaria de la sesión. Su recorrido se prueba en `test/web_accounts.py` con PostgreSQL real. Si cambias las tablas, actualiza `db/schema.sql` (que se pueda ejecutar más de una vez): `scripts/migrate.js` lo aplica en cada despliegue.
 
 ## Publicar
 

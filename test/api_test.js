@@ -30,28 +30,28 @@ const msgs = [{ role: "user", content: [{ type: "text", text: "hola" }] }];
   r = res(); await handler(req({ messages: msgs }, { "x-repaso-code": "secreto" }), r); assert.equal(r.statusCode, 429); ok++;
   r = res(); const g = req({}); g.method = "GET"; await handler(g, r); assert.equal(r.statusCode, 405); ok++;
 
-  // Con cuentas (Supabase): solo se atiende a quien tiene sesión.
-  process.env.SUPABASE_URL = "https://sb.test"; process.env.SUPABASE_ANON_KEY = "sb_publishable_x";
-  const sbFetch = (claudeOk = true) => async (url, init) => {
-    if (url === "https://sb.test/auth/v1/user") return init.headers.authorization === "Bearer buena" ? { ok: true, status: 200, json: async () => ({ id: "u1", email: "j@test.es" }) } : { ok: false, status: 401, json: async () => ({}) };
-    if (url.startsWith("https://sb.test/auth/v1/admin/users/")) { sent = { url, init }; return { ok: true, status: 200, text: async () => "" }; }
-    const enc = new TextEncoder(); return { ok: claudeOk, status: 200, body: new ReadableStream({ start(c) { c.enqueue(enc.encode("data: {\"type\":\"message_stop\"}\n\n")); c.close(); } }) };
-  };
-  global.fetch = sbFetch();
+  // Con cuentas (Neon): solo se atiende a quien tiene sesión.
+  const crypto = require("crypto");
+  const good = crypto.createHash("sha256").update("buena").digest("hex");
+  global.__REPASO_DB__ = async (text, params) => (/rp_sessions/.test(text) && params[0] === good ? [{ id: "u1", email: "j@test.es", name: "J", meta: {} }] : []);
+  global.fetch = async () => { const enc = new TextEncoder(); return { ok: true, status: 200, body: new ReadableStream({ start(c) { c.enqueue(enc.encode("data: {\"type\":\"message_stop\"}\n\n")); c.close(); } }) }; };
   r = res(); await handler(req({ messages: msgs }, { "x-repaso-code": "secreto" }), r); assert.equal(r.statusCode, 401); assert.match(r.chunks.join(""), /no_session/); ok++;
   r = res(); await handler(req({ messages: msgs }, { "x-repaso-code": "secreto", authorization: "Bearer mala" }), r); assert.equal(r.statusCode, 401); assert.match(r.chunks.join(""), /no_session/); ok++;
   r = res(); await handler(req({ messages: msgs }, { "x-repaso-code": "mal", authorization: "Bearer buena" }), r); assert.equal(r.statusCode, 401); assert.match(r.chunks.join(""), /bad_code/); ok++;
   r = res(); await handler(req({ messages: msgs }, { "x-repaso-code": "secreto", authorization: "Bearer buena" }), r); assert.equal(r.statusCode, 200); ok++;
 
-  const account = require("../api/account.js");
-  const dreq = h => { const x = req({}, h); x.method = "DELETE"; return x; };
-  r = res(); await account(dreq({}), r); assert.equal(r.statusCode, 401); ok++;
-  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-  r = res(); await account(dreq({ authorization: "Bearer buena" }), r); assert.equal(r.statusCode, 501); assert.match(r.chunks.join(""), /missing_service_key/); ok++;
-  process.env.SUPABASE_SERVICE_ROLE_KEY = "sb_secret_y"; sent = null;
-  r = res(); await account(dreq({ authorization: "Bearer buena" }), r); assert.equal(r.statusCode, 200);
-  assert.equal(sent.url, "https://sb.test/auth/v1/admin/users/u1"); assert.equal(sent.init.method, "DELETE"); assert.equal(sent.init.headers.apikey, "sb_secret_y"); assert.equal(sent.init.headers.authorization, undefined); ok++;
-  r = res(); const gg = req({}); gg.method = "GET"; await account(gg, r); assert.equal(r.statusCode, 405); ok++;
+  const A = require("../lib/auth.js");
+  const h = await A.hashPassword("julia1234");
+  assert.match(h, /^scrypt\$/); assert.ok(!h.includes("julia1234")); assert.ok(await A.verifyPassword("julia1234", h)); assert.ok(!await A.verifyPassword("julia1235", h)); ok++;
+  assert.ok(await A.verifyPassword("Provisional9", "temp$Provisional9")); assert.ok(!await A.verifyPassword("otra", "temp$Provisional9")); assert.ok(!await A.verifyPassword("abc", "temp$abc")); ok++;
+  const auth = require("../api/auth.js"), docs = require("../api/docs.js");
+  r = res(); await auth(req({ action: "signup", email: "mal", password: "julia1234" }), r); assert.equal(r.statusCode, 400); assert.match(r.chunks.join(""), /invalid_email/); ok++;
+  r = res(); await auth(req({ action: "signup", email: "a@b.es", password: "corta" }), r); assert.equal(r.statusCode, 400); assert.match(r.chunks.join(""), /weak_password/); ok++;
+  const gd = req({}); gd.method = "GET"; gd.url = "/api/docs"; r = res(); await docs(gd, r); assert.equal(r.statusCode, 401); ok++;
+  const pb = req({ path: "../x", data: {} }, { authorization: "Bearer buena" }); pb.url = "/api/docs"; r = res(); await docs(pb, r); assert.equal(r.statusCode, 400); assert.match(r.chunks.join(""), /bad_path/); ok++;
+  global.__REPASO_DB__ = async () => { const e = new Error("no existe"); e.code = "42P01"; throw e; };
+  r = res(); await auth(req({ action: "login", email: "a@b.es", password: "x" }), r); assert.equal(r.statusCode, 503); assert.match(r.chunks.join(""), /no_table/); ok++;
+  delete global.__REPASO_DB__;
 
-  console.log(`${ok}/15 comprobaciones correctas (api)`);
+  console.log(`${ok}/18 comprobaciones correctas (api)`);
 })().catch(e => { console.error("FAIL", e); process.exit(1); });

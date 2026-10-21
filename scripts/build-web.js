@@ -9,15 +9,11 @@ const app = fs.readFileSync(path.join(root, "src", "repaso.html"), "utf8");
 const shim = fs.readFileSync(path.join(root, "web", "claude-web.js"), "utf8");
 if (shim.includes("</script")) throw new Error("web/claude-web.js no puede contener </script");
 
-// Cuentas de verdad: URL y clave pública (anon/publishable) de Supabase. Son públicas por diseño
-// (la seguridad está en las políticas de supabase/schema.sql); la clave secreta nunca va aquí.
-const env = (...n) => n.map(k => process.env[k]).find(Boolean) || "";
-const supabaseUrl = env("SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL");
-const supabaseKey = env("SUPABASE_ANON_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_PUBLISHABLE_KEY", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
-const jwtRole = k => { try { return JSON.parse(Buffer.from(k.split(".")[1], "base64url").toString()).role; } catch { return null; } };
-if (/^sb_secret_/.test(supabaseKey) || jwtRole(supabaseKey) === "service_role") throw new Error("La clave de Supabase para el navegador tiene que ser la pública (anon o publishable), nunca la secreta.");
-const cfg = supabaseUrl && supabaseKey ? { supabaseUrl, supabaseKey } : {};
-const cfgJs = "window.__REPASO_CONFIG__=" + JSON.stringify(cfg).replace(/</g, "\\u003c") + ";";
+// Cuentas de verdad: si hay base de datos (integración de Neon), la app usa /api/auth y /api/docs.
+// Al navegador no va ningún dato de la conexión; solo se le dice que hay cuentas.
+const { dbUrl } = require("../lib/db.js");
+const cfg = dbUrl() ? { accounts: true } : {};
+const cfgJs = "window.__REPASO_CONFIG__=" + JSON.stringify(cfg) + ";";
 
 const icon = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#ffe45c"/><text x="32" y="44" text-anchor="middle" font-family="Georgia,serif" font-size="34" fill="#17203a">Re</text></svg>');
 
@@ -45,4 +41,4 @@ ${app}
 const out = path.join(root, "dist");
 fs.mkdirSync(out, { recursive: true });
 fs.writeFileSync(path.join(out, "index.html"), html);
-console.log(`dist/index.html (${(html.length / 1024).toFixed(0)} KB) · cuentas: ${cfg.supabaseUrl ? "Supabase (" + cfg.supabaseUrl + ")" : "no (datos en el navegador)"}`);
+console.log(`dist/index.html (${(html.length / 1024).toFixed(0)} KB) · cuentas: ${cfg.accounts ? "sí (base de datos)" : "no (datos en el navegador)"}`);
