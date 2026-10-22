@@ -63,10 +63,22 @@ const events = r => r.chunks.join("").split("\n\n").filter(Boolean).map(b => JSO
   assert.equal(G.modelsFor("quick", true)[0], "gemini-flash-lite-latest"); assert.equal(G.modelsFor("complex", true)[0], "gemini-flash-latest");
   assert.equal(G.modelsFor("complex")[0], "gemma-3-27b-it"); process.env.REPASO_GEMINI_MODE = "calidad"; assert.equal(G.modelsFor("complex")[0], "gemini-flash-latest"); delete process.env.REPASO_GEMINI_MODE; ok++;
   const big = [{ role: "user", content: [{ type: "text", text: "x".repeat(120000) }] }];
-  assert.ok(G.estimateTokens(big) > 30000); assert.equal(G.modelsFor("complex", false, G.estimateTokens(big))[0], "gemini-flash-lite-latest"); assert.equal(G.modelsFor("complex", false, G.estimateTokens(big)).at(-1), "gemma-3-27b-it");
+  assert.ok(G.estimateTokens(big) > 30000); assert.equal(G.modelsFor("complex", false, G.estimateTokens(big))[0], "gemini-flash-lite-latest"); assert.equal(G.modelsFor("complex", false, G.estimateTokens(big)).at(-1), "gemma-3-12b-it");
   assert.equal(G.modelsFor("complex", false, 500)[0], "gemma-3-27b-it"); ok++;
+  const sh = G.shrinkForGemma(big);
+  assert.ok(G.estimateTokens(sh) <= 12000); assert.match(sh[0].content[0].text, /Material resumido/); assert.equal(big[0].content[0].text.length, 120000); ok++;
+  // Un modelo sin cupo del día se aparta y la siguiente petición no lo vuelve a probar primero.
+  G.cooldown.clear(); const tried = [];
+  await G.call({ key: "k", messages: [{ role: "user", content: "hola" }], maxTokens: 10, fetchImpl: async u => { tried.push(u); return u.includes("gemma-3-27b") ? { ok: false, status: 429, text: async () => '{"error":{"message":"PerDay limit: 0"}}' } : { ok: true, status: 200, body: sseBody([]) }; } });
+  tried.length = 0;
+  await G.call({ key: "k", messages: [{ role: "user", content: "hola" }], maxTokens: 10, fetchImpl: async u => { tried.push(u); return { ok: true, status: 200, body: sseBody([]) }; } });
+  assert.ok(!tried[0].includes("gemma-3-27b")); ok++;
+  // Chat con herramientas sin cupo de Flash: sigue con Gemma, sin herramientas y con lo de antes como texto.
+  const gb = G.body({ messages: [{ role: "assistant", content: [{ type: "tool_use", id: "t1", name: "recordar", input: { dato: "x" } }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] }], tools: [{ name: "recordar" }], maxTokens: 50000, model: "gemma-3-27b-it" });
+  assert.ok(!gb.tools); assert.match(gb.contents[0].parts[0].text, /Usé la herramienta recordar/); assert.equal(gb.generationConfig.maxOutputTokens, 8192); assert.equal(G.modelsFor("default", true).at(-1), "gemma-3-12b-it"); ok++;
+  G.cooldown.clear();
   // REPASO_AI=claude con las dos claves → Claude.
   process.env.ANTHROPIC_API_KEY = "sk-ant"; process.env.REPASO_AI = "claude";
   assert.equal(handler.provider().name, "claude"); delete process.env.REPASO_AI; assert.equal(handler.provider().name, "gemini"); ok++;
-  console.log(`${ok}/17 comprobaciones correctas (gemini)`);
+  console.log(`${ok}/20 comprobaciones correctas (gemini)`);
 })().catch(e => { console.error("FAIL", e); process.exit(1); });

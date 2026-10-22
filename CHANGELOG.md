@@ -1,5 +1,11 @@
 # Cambios
 
+## 4.4.5 — 22 oct 2026
+- El servidor aparta durante un rato los modelos sin cupo y no pierde tiempo volviendo a probarlos.
+- Otro Gemma de reserva (12B), con su propio cupo.
+- Último recurso: si los Flash están agotados y el material no cabe en Gemma, se le manda un extracto repartido por todo el material (con aviso) en vez de fallar.
+- El chat sigue funcionando aunque los Flash estén agotados (con Gemma, sin apuntar cosas automáticamente).
+
 ## 4.4.4 — 22 oct 2026
 - Tareas con mucho material (modelo de examen, apuntes de varios PDFs): van directamente a Gemini Flash-Lite y Flash, que admiten mucho más texto por minuto que Gemma; Gemma queda para lo pequeño. Si la petición no cabe en un modelo, se pasa al siguiente sin esperar.
 - La app espera y reintenta sola hasta ~10 minutos antes de rendirse: mejor lento que con error.
