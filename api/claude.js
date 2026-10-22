@@ -21,10 +21,15 @@ const { userFromReq } = require("../lib/auth.js");
 const gemini = require("../lib/gemini.js");
 
 /** Qué IA usar: Gemini si hay su clave (salvo REPASO_AI=claude); si no, Claude. */
+// Nombres que se aceptan para la clave de Google (por si se escribió de otra forma).
+const GEMINI_VARS = ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_KEY", "GOOGLE_AI_API_KEY", "GEMINI_API"];
+const ANTHROPIC_VARS = ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY"];
+const pick = (env, names) => { for (const n of names) { const v = String(env[n] || "").trim(); if (v) return { name: n, value: v }; } return null; };
 function provider(env = process.env) {
-  if (env.REPASO_AI === "claude" && env.ANTHROPIC_API_KEY) return { name: "claude", key: env.ANTHROPIC_API_KEY };
-  if (env.GEMINI_API_KEY) return { name: "gemini", key: env.GEMINI_API_KEY };
-  if (env.ANTHROPIC_API_KEY) return { name: "claude", key: env.ANTHROPIC_API_KEY };
+  const g = pick(env, GEMINI_VARS), a = pick(env, ANTHROPIC_VARS);
+  if (String(env.REPASO_AI || "").trim().toLowerCase() === "claude" && a) return { name: "claude", key: a.value, from: a.name };
+  if (g) return { name: "gemini", key: g.value, from: g.name };
+  if (a) return { name: "claude", key: a.value, from: a.name };
   return null;
 }
 
@@ -51,6 +56,13 @@ function validMessages(m) {
 }
 
 async function handler(req, res) {
+  // Diagnóstico sin secretos: abre /api/claude en el navegador para ver qué IA encuentra el servidor.
+  if (req.method === "GET") {
+    const ai = provider();
+    return send(res, 200, ai
+      ? { ok: true, ia: ai.name, variable: ai.from, clave: ai.key.slice(0, 4) + "…" + ` (${ai.key.length} caracteres)`, codigo_de_acceso: !!process.env.REPASO_ACCESS_CODE }
+      : { ok: false, ia: null, problema: "El servidor no ve ninguna clave. En Vercel → Settings → Environment Variables añade GEMINI_API_KEY marcando Production, guarda y haz Redeploy.", codigo_de_acceso: !!process.env.REPASO_ACCESS_CODE });
+  }
   if (req.method !== "POST") { res.setHeader("allow", "POST"); return send(res, 405, { error: "method_not_allowed" }); }
   if (accounts()) {
     let user;

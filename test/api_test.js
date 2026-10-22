@@ -28,7 +28,7 @@ const msgs = [{ role: "user", content: [{ type: "text", text: "hola" }] }];
   assert.equal(sent.url, "https://api.anthropic.com/v1/messages"); assert.equal(sent.init.headers["x-api-key"], "sk-test"); assert.equal(b.model, "claude-opus-5-5"); assert.equal(b.stream, true); assert.equal(b.max_tokens, 16000); assert.equal(b.tools.length, 1); ok++;
   global.fetch = async () => ({ ok: false, status: 529, text: async () => "overloaded" });
   r = res(); await handler(req({ messages: msgs }, { "x-repaso-code": "secreto" }), r); assert.equal(r.statusCode, 429); ok++;
-  r = res(); const g = req({}); g.method = "GET"; await handler(g, r); assert.equal(r.statusCode, 405); ok++;
+  r = res(); const g = req({}); g.method = "PUT"; await handler(g, r); assert.equal(r.statusCode, 405); ok++;
 
   // Con cuentas (Neon): solo se atiende a quien tiene sesión.
   const crypto = require("crypto");

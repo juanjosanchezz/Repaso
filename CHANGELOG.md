@@ -1,5 +1,9 @@
 # Cambios
 
+## 4.4.1 — 22 oct 2026
+- `/api/claude` acepta la clave de Google con otros nombres habituales (GOOGLE_API_KEY…) y quita espacios sobrantes.
+- Abrir `/api/claude` en el navegador dice qué IA ve el servidor, sin mostrar la clave.
+
 ## 4.4 — 22 oct 2026
 - Versión web con **Gemini gratis** (nivel gratuito de Google, `GEMINI_API_KEY`): nadie paga nada. Claude sigue disponible con `ANTHROPIC_API_KEY` y `REPASO_AI=claude`.
 - `lib/gemini.js` traduce peticiones (texto, imágenes, herramientas con su firma) y respuestas en streaming al formato de Claude; si un modelo llega a su límite o no existe, prueba el siguiente gratuito.
