@@ -60,8 +60,9 @@ const events = r => r.chunks.join("").split("\n\n").filter(Boolean).map(b => JSO
   global.fetch = async () => ({ ok: true, status: 200, body: sseBody([{ candidates: [{ content: { parts: [{ text: "corta" }] }, finishReason: "MAX_TOKENS" }] }]) });
   r = res(); await handler(req({ messages: [{ role: "user", content: "hola" }] }), r); assert.equal(events(r).find(e => e.type === "message_delta").delta.stop_reason, "max_tokens"); ok++;
 
+  assert.equal(G.modelsFor("quick")[0], "gemini-flash-lite-latest"); assert.equal(G.modelsFor("complex")[0], "gemini-flash-latest"); ok++;
   // REPASO_AI=claude con las dos claves → Claude.
   process.env.ANTHROPIC_API_KEY = "sk-ant"; process.env.REPASO_AI = "claude";
   assert.equal(handler.provider().name, "claude"); delete process.env.REPASO_AI; assert.equal(handler.provider().name, "gemini"); ok++;
-  console.log(`${ok}/15 comprobaciones correctas (gemini)`);
+  console.log(`${ok}/16 comprobaciones correctas (gemini)`);
 })().catch(e => { console.error("FAIL", e); process.exit(1); });

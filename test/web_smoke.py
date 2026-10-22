@@ -35,6 +35,10 @@ def api(route):
     body = json.loads(req.post_data or "{}")
     calls.append({"code": req.headers.get("x-repaso-code"), "body": body})
     if req.headers.get("x-repaso-code") != "julia2026": return route.fulfill(status=401, content_type="application/json", body='{"error":"bad_code"}')
+    if MODE["fail"] == "minute":
+        MODE["fail"] = None
+        return route.fulfill(status=429, content_type="application/json", body='{"error":"rate_limited","daily":false,"retry_after":5}')
+    if MODE["fail"] == "daily": return route.fulfill(status=429, content_type="application/json", body='{"error":"rate_limited","daily":true}')
     if MODE["fail"] == "missing_key": return route.fulfill(status=500, content_type="application/json", body='{"error":"missing_key"}')
     if MODE["fail"] == "no_credit": return route.fulfill(status=400, content_type="application/json", body='{"error":"upstream","detail":"Your credit balance is too low to access the Anthropic API."}')
     msgs = body["messages"]; last = msgs[-1]
@@ -65,7 +69,7 @@ def main():
         ctx.route("**/*", route)
         pg = ctx.new_page(); errors = []
         pg.on("pageerror", lambda e: errors.append(str(e)))
-        pg.on("console", lambda m: errors.append(m.text) if m.type == "error" and not any(c in m.text for c in ("401", "400", "500")) else None)  # el 401 antes del código es esperado
+        pg.on("console", lambda m: errors.append(m.text) if m.type == "error" and not any(c in m.text for c in ("401", "400", "429", "500")) else None)  # el 401 antes del código es esperado
         W = lambda ms=250: pg.wait_for_timeout(ms)
         def click(sel, i=0): pg.locator(sel).nth(i).click(); W(150)
         def wait_for(fn, t=6000):
@@ -109,6 +113,15 @@ def main():
             pg.fill("#chat-input", "Hola"); pg.press("#chat-input", "Enter")
             ok = wait_for(lambda: want in pg.inner_text("#r-chat-log"))
             check(f"{mode}: explica la causa real", ok and "tu cuenta" not in pg.inner_text("#r-chat-log").lower() and "permiso" not in pg.inner_text("#r-chat-log").lower(), pg.inner_text("#r-chat-log")[-300:])
+        MODE["fail"] = None
+        print("\n[web] Límite de la IA gratuita: espera y sigue, sin error")
+        MODE["fail"] = "minute"; before = len(calls)
+        pg.fill("#chat-input", "¿Qué es el turnismo?"); pg.press("#chat-input", "Enter")
+        check("avisa de que espera unos segundos", wait_for(lambda: "necesita 5 segundos" in pg.inner_text("body"), 4000))
+        check("y responde sola, sin error", wait_for(lambda: pg.inner_text("#r-chat-log").count("alternancia pactada") >= 2, 12000) and len(calls) == before + 2)
+        MODE["fail"] = "daily"
+        pg.fill("#chat-input", "Otra"); pg.press("#chat-input", "Enter")
+        check("límite del día: lo explica y no reintenta", wait_for(lambda: "cupo gratuito de la IA de hoy" in pg.inner_text("#r-chat-log")))
         MODE["fail"] = None
         print("\n[web] Copia de seguridad (descarga real)")
         click('[data-action=settings]')

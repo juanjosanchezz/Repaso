@@ -87,9 +87,9 @@ async function handler(req, res) {
 
   if (ai.name === "gemini") {
     let r;
-    try { r = await gemini.call({ key, messages, tools, maxTokens: Math.min(Number(body.max_tokens) || MAX_TOKENS, MAX_TOKENS), signal: ac.signal }); }
+    try { r = await gemini.call({ key, messages, tools, tier, maxTokens: Math.min(Number(body.max_tokens) || MAX_TOKENS, MAX_TOKENS), signal: ac.signal }); }
     catch { if (ac.signal.aborted) return; return send(res, 502, { error: "upstream_unreachable" }); }
-    if (!r.res) return send(res, r.status, { error: r.error, detail: r.detail });
+    if (!r.res) return send(res, r.status, { error: r.error, detail: r.detail, ...(r.status === 429 ? { daily: !!r.daily, retry_after: r.retry_after } : {}) });
     res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no", "x-repaso-model": r.model });
     try { await gemini.pipe(r.res, chunk => res.write(chunk)); } catch { /* la usuaria canceló o se cortó la conexión */ }
     return res.end();

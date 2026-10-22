@@ -358,7 +358,15 @@
     return err("upstream_error", body?.detail || body?.error || "Error " + status);
   }
   /** Una ronda: POST a /api/claude y lectura del stream SSE de la API de Claude. */
-  async function round(body, signal, onDelta, retried) {
+  /** Espera `sec` segundos (se puede cancelar) avisando a la app para que lo muestre. */
+  function waitForQuota(sec, attempt, signal) {
+    try { window.dispatchEvent(new CustomEvent("repaso:ai-wait", { detail: { seconds: sec, attempt } })); } catch {}
+    return new Promise((res, rej) => {
+      const t = setTimeout(res, sec * 1000);
+      signal?.addEventListener?.("abort", () => { clearTimeout(t); rej(err("cancelled", "Cancelado")); }, { once: true });
+    });
+  }
+  async function round(body, signal, onDelta, retried, waits = 0) {
     const headers = { "content-type": "application/json", "x-repaso-code": getCode() };
     if (Cloud.session) headers.authorization = "Bearer " + Cloud.session.token;
     let r;
@@ -367,10 +375,19 @@
     if (r.status === 401) {
       const j = await r.json().catch(() => ({}));
       if (j?.error === "no_session") { expire(); throw err("not_granted", "Tu sesión ha caducado. Vuelve a entrar."); }
-      if (!retried && await askCode(!!getCode())) return round(body, signal, onDelta, true);
+      if (!retried && await askCode(!!getCode())) return round(body, signal, onDelta, true, waits);
       throw err("not_granted", "Falta el código de acceso");
     }
-    if (!r.ok) { const j = await r.json().catch(() => ({})); throw httpError(r.status, j); }
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      // Límite por minuto de la IA gratuita: se espera y se reintenta solo (hasta ~3 minutos).
+      if (r.status === 429 && !j.daily && waits < 6) {
+        await waitForQuota(Math.max(5, Math.min(60, Number(j.retry_after) || 20)), waits + 1, signal);
+        return round(body, signal, onDelta, retried, waits + 1);
+      }
+      if (r.status === 429 && j.daily) throw err("daily_limit", "Límite del día");
+      throw httpError(r.status, j);
+    }
     rememberCode();
     const reader = r.body.getReader(), dec = new TextDecoder();
     let buf = "", stop = null; const blocks = [];
