@@ -1,5 +1,8 @@
 # Cambios
 
+## 4.4.6 — 22 oct 2026
+- Fallos puntuales de Google (error interno, respuesta cortada o mal formada): el servidor prueba otro modelo y la app vuelve a empezar sola hasta 3 veces, con aviso de espera, en vez de mostrar "Error".
+
 ## 4.4.5 — 22 oct 2026
 - El servidor aparta durante un rato los modelos sin cupo y no pierde tiempo volviendo a probarlos.
 - Otro Gemma de reserva (12B), con su propio cupo.

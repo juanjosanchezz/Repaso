@@ -417,7 +417,19 @@
     const content = blocks.filter(Boolean).map(b => b.type === "tool_use" ? { type: "tool_use", id: b.id, name: b.name, input: (() => { try { return JSON.parse(b.json || "{}"); } catch { return {}; } })() } : b.type === "text" ? { type: "text", text: b.text } : null).filter(Boolean);
     return { content, stop };
   }
+  /** Si la IA falla de forma puntual (error de Google, respuesta cortada…), se vuelve a empezar sola. */
   async function sample(input, opts = {}) {
+    for (let attempt = 0; ; attempt++) {
+      try { return await sampleOnce(input, opts); }
+      catch (e) {
+        const transient = e?.code === "upstream_error" || e?.code === "empty_completion";
+        if (!transient || attempt >= 3 || opts.signal?.aborted) throw e;
+        try { opts.onText?.({ text: "", delta: "" }); } catch {}
+        await waitForQuota([3, 8, 15][attempt], attempt + 1, opts.signal);
+      }
+    }
+  }
+  async function sampleOnce(input, opts = {}) {
     if (opts.signal?.aborted) throw err("cancelled", "Cancelado");
     const tier = ["quick", "default", "complex"].includes(opts.modelTier) ? opts.modelTier : "default";
     const tools = Array.isArray(opts.tools) && opts.tools.length ? opts.tools : null;
@@ -458,10 +470,14 @@
   sample.json = async (input, opts = {}) => {
     const note = "\n\n(Tu respuesta se leerá automáticamente como JSON: escribe solo el JSON, sin texto antes ni después.)";
     const inp = typeof input === "string" ? input + note : input.map((t, i, a) => i === a.length - 1 ? { ...t, content: t.content + note } : t);
-    const r = await sample(inp, opts);
-    const v = r.truncated ? undefined : parseJsonLoose(r.text);
-    if (v === undefined) throw { code: "invalid_json", message: r.truncated ? "Respuesta cortada" : "La respuesta no era JSON", text: r.text };
-    return v;
+    // Si la respuesta llega mal formada (pasa a veces con los modelos gratuitos), se pide otra vez.
+    for (let attempt = 0; ; attempt++) {
+      const r = await sample(inp, opts);
+      const v = r.truncated ? undefined : parseJsonLoose(r.text);
+      if (v !== undefined) return v;
+      if (attempt >= 2 || opts.signal?.aborted) throw { code: "invalid_json", message: r.truncated ? "Respuesta cortada" : "La respuesta no era JSON", text: r.text };
+      try { opts.onText?.({ text: "", delta: "" }); } catch {}
+    }
   };
   sample.limits = async () => ({ maxPromptBytes: 262144, images: { maxCount: 5, maxInputBytes: 20e6, mediaTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"] }, tools: { maxCount: 8 } });
 

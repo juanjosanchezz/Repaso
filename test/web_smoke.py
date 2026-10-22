@@ -35,6 +35,9 @@ def api(route):
     body = json.loads(req.post_data or "{}")
     calls.append({"code": req.headers.get("x-repaso-code"), "body": body})
     if req.headers.get("x-repaso-code") != "julia2026": return route.fulfill(status=401, content_type="application/json", body='{"error":"bad_code"}')
+    if MODE["fail"] == "flaky":
+        MODE["fail"] = None
+        return route.fulfill(status=502, content_type="application/json", body='{"error":"upstream","detail":"Internal error"}')
     if MODE["fail"] == "minute":
         MODE["fail"] = None
         return route.fulfill(status=429, content_type="application/json", body='{"error":"rate_limited","daily":false,"retry_after":5}')
@@ -69,7 +72,7 @@ def main():
         ctx.route("**/*", route)
         pg = ctx.new_page(); errors = []
         pg.on("pageerror", lambda e: errors.append(str(e)))
-        pg.on("console", lambda m: errors.append(m.text) if m.type == "error" and not any(c in m.text for c in ("401", "400", "429", "500")) else None)  # el 401 antes del código es esperado
+        pg.on("console", lambda m: errors.append(m.text) if m.type == "error" and not any(c in m.text for c in ("401", "400", "429", "500", "502")) else None)  # el 401 antes del código es esperado
         W = lambda ms=250: pg.wait_for_timeout(ms)
         def click(sel, i=0): pg.locator(sel).nth(i).click(); W(150)
         def wait_for(fn, t=6000):
@@ -119,6 +122,9 @@ def main():
         pg.fill("#chat-input", "¿Qué es el turnismo?"); pg.press("#chat-input", "Enter")
         check("avisa de que espera unos segundos", wait_for(lambda: "necesita 5 segundos" in pg.inner_text("body"), 4000))
         check("y responde sola, sin error", wait_for(lambda: pg.inner_text("#r-chat-log").count("alternancia pactada") >= 2, 12000) and len(calls) == before + 2)
+        MODE["fail"] = "flaky"; before = len(calls)
+        pg.fill("#chat-input", "¿Y el caciquismo?"); pg.press("#chat-input", "Enter")
+        check("fallo puntual de Google: reintenta solo y responde, sin error", wait_for(lambda: pg.inner_text("#r-chat-log").count("alternancia pactada") >= 3, 12000) and len(calls) == before + 2 and "Ha fallado" not in pg.inner_text("#r-chat-log"))
         MODE["fail"] = "daily"
         pg.fill("#chat-input", "Otra"); pg.press("#chat-input", "Enter")
         check("límite del día: lo explica y no reintenta", wait_for(lambda: "cupo gratuito de la IA de hoy" in pg.inner_text("#r-chat-log")))

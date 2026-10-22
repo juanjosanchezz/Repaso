@@ -98,7 +98,7 @@ Le dices `UnaProvisional1`; al entrar con ella se guarda cifrada y luego la pued
 ```bash
 pip install playwright && playwright install chromium
 python3 test/e2e.py          # artifact: 171 comprobaciones (E2E_OUT=carpeta para guardar las capturas)
-python3 test/web_smoke.py    # versión web sin cuentas: 20 comprobaciones
+python3 test/web_smoke.py    # versión web sin cuentas: 21 comprobaciones
 python3 test/web_accounts.py # cuentas con PostgreSQL real: 48 comprobaciones (necesita PostgreSQL instalado)
 node test/api_test.js        # funciones de Vercel: 18 comprobaciones
 node test/gemini_test.js     # traducción a Gemini: 20 comprobaciones
