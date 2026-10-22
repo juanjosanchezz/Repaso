@@ -380,8 +380,9 @@
     }
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
-      // Límite por minuto de la IA gratuita: se espera y se reintenta solo (hasta ~3 minutos).
-      if (r.status === 429 && !j.daily && waits < 6) {
+      // Límite por minuto de la IA gratuita: se espera y se reintenta solo (hasta ~10 minutos).
+      // Mejor que tarde a que falle.
+      if (r.status === 429 && !j.daily && waits < 12) {
         await waitForQuota(Math.max(5, Math.min(60, Number(j.retry_after) || 20)), waits + 1, signal);
         return round(body, signal, onDelta, retried, waits + 1);
       }

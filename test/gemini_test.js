@@ -62,8 +62,11 @@ const events = r => r.chunks.join("").split("\n\n").filter(Boolean).map(b => JSO
 
   assert.equal(G.modelsFor("quick", true)[0], "gemini-flash-lite-latest"); assert.equal(G.modelsFor("complex", true)[0], "gemini-flash-latest");
   assert.equal(G.modelsFor("complex")[0], "gemma-3-27b-it"); process.env.REPASO_GEMINI_MODE = "calidad"; assert.equal(G.modelsFor("complex")[0], "gemini-flash-latest"); delete process.env.REPASO_GEMINI_MODE; ok++;
+  const big = [{ role: "user", content: [{ type: "text", text: "x".repeat(120000) }] }];
+  assert.ok(G.estimateTokens(big) > 30000); assert.equal(G.modelsFor("complex", false, G.estimateTokens(big))[0], "gemini-flash-lite-latest"); assert.equal(G.modelsFor("complex", false, G.estimateTokens(big)).at(-1), "gemma-3-27b-it");
+  assert.equal(G.modelsFor("complex", false, 500)[0], "gemma-3-27b-it"); ok++;
   // REPASO_AI=claude con las dos claves → Claude.
   process.env.ANTHROPIC_API_KEY = "sk-ant"; process.env.REPASO_AI = "claude";
   assert.equal(handler.provider().name, "claude"); delete process.env.REPASO_AI; assert.equal(handler.provider().name, "gemini"); ok++;
-  console.log(`${ok}/16 comprobaciones correctas (gemini)`);
+  console.log(`${ok}/17 comprobaciones correctas (gemini)`);
 })().catch(e => { console.error("FAIL", e); process.exit(1); });

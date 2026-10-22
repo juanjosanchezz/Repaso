@@ -1,5 +1,9 @@
 # Cambios
 
+## 4.4.4 — 22 oct 2026
+- Tareas con mucho material (modelo de examen, apuntes de varios PDFs): van directamente a Gemini Flash-Lite y Flash, que admiten mucho más texto por minuto que Gemma; Gemma queda para lo pequeño. Si la petición no cabe en un modelo, se pasa al siguiente sin esperar.
+- La app espera y reintenta sola hasta ~10 minutos antes de rendirse: mejor lento que con error.
+
 ## 4.4.3 — 22 oct 2026
 - Modo "volumen" por defecto: Gemma primero (mucho más cupo diario) en todo lo que no usa herramientas; Flash de respaldo y en el chat que apunta exámenes y tareas. `REPASO_GEMINI_MODE=calidad` para lo contrario.
 - IA gratuita sin errores por el límite por minuto: la app avisa ("necesita unos segundos, sigue sola") y reintenta. Si es el límite del día, lo explica.
