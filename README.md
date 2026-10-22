@@ -100,7 +100,7 @@ python3 test/e2e.py          # artifact: 171 comprobaciones (E2E_OUT=carpeta par
 python3 test/web_smoke.py    # versión web sin cuentas: 15 comprobaciones
 python3 test/web_accounts.py # cuentas con PostgreSQL real: 48 comprobaciones (necesita PostgreSQL instalado)
 node test/api_test.js        # funciones de Vercel: 18 comprobaciones
-node test/gemini_test.js     # traducción a Gemini: 13 comprobaciones
+node test/gemini_test.js     # traducción a Gemini: 15 comprobaciones
 node test/migrate_test.js    # migración de la base de datos: 7 comprobaciones
 ```
 

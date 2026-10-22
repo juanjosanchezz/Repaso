@@ -28,7 +28,7 @@ const events = r => r.chunks.join("").split("\n\n").filter(Boolean).map(b => JSO
   const seen = [];
   global.fetch = async (url, init) => {
     seen.push({ url, init });
-    if (url.includes("gemini-flash-latest")) return { ok: false, status: 429, text: async () => "RESOURCE_EXHAUSTED" };
+    if (url.includes("gemini-flash-latest")) return { ok: false, status: 429, text: async () => '{"error":{"message":"Quota exceeded for metric: generate_content_free_tier_requests, limit: 0"}}' };
     return { ok: true, status: 200, body: sseBody([
       { candidates: [{ content: { parts: [{ text: "pensando…", thought: true }, { text: "El turnismo " }] } }] },
       { candidates: [{ content: { parts: [{ text: "fue pactado." }, { functionCall: { name: "recordar", args: { dato: "Kant" } }, thoughtSignature: "S1" }] }, finishReason: "STOP" }] },
@@ -44,8 +44,15 @@ const events = r => r.chunks.join("").split("\n\n").filter(Boolean).map(b => JSO
   assert.equal(ev.find(e => e.type === "message_delta").delta.stop_reason, "tool_use"); assert.equal(ev.at(-1).type, "message_stop"); ok++;
 
   // Todos los modelos sin cupo → 429; clave mala → error que la app reconoce; bloqueo → "refused".
-  global.fetch = async () => ({ ok: false, status: 429, text: async () => "RESOURCE_EXHAUSTED" });
+  global.fetch = async () => ({ ok: false, status: 429, text: async () => '{"error":{"message":"Quota exceeded ... PerDay ... limit: 0"}}' });
   r = res(); await handler(req({ messages: [{ role: "user", content: "hola" }] }), r); assert.equal(r.statusCode, 429); assert.match(r.chunks.join(""), /rate_limited/); ok++;
+  // Límite por minuto: espera lo que pide Google y reintenta el mismo modelo.
+  let n = 0; const t0 = Date.now();
+  const okBody = () => ({ ok: true, status: 200, body: sseBody([{ candidates: [{ content: { parts: [{ text: "ya" }] }, finishReason: "STOP" }] }]) });
+  const g2 = await G.call({ key: "k", messages: [{ role: "user", content: "x" }], maxTokens: 10, fetchImpl: async () => (++n === 1 ? { ok: false, status: 429, text: async () => '{"error":{"details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"1s"}]}}' } : okBody()) });
+  assert.ok(g2.res); assert.equal(n, 2); assert.ok(Date.now() - t0 >= 1000); assert.equal(g2.model, "gemini-flash-latest"); ok++;
+  const pr = await G.probe({ key: "k", fetchImpl: async u => (u.includes("flash-latest") ? { ok: false, status: 429, text: async () => '{"error":{"message":"limit: 0"}}' } : { ok: true, status: 200, text: async () => "{}" }) });
+  assert.equal(pr[0].estado, "sin cupo gratuito (o agotado hoy)"); assert.equal(pr[1].estado, "funciona"); ok++;
   global.fetch = async () => ({ ok: false, status: 400, text: async () => '{"error":{"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT"}}' });
   r = res(); await handler(req({ messages: [{ role: "user", content: "hola" }] }), r); assert.equal(r.statusCode, 502); assert.match(r.chunks.join(""), /authentication_error/); ok++;
   global.fetch = async () => ({ ok: true, status: 200, body: sseBody([{ promptFeedback: { blockReason: "SAFETY" } }]) });
@@ -56,5 +63,5 @@ const events = r => r.chunks.join("").split("\n\n").filter(Boolean).map(b => JSO
   // REPASO_AI=claude con las dos claves → Claude.
   process.env.ANTHROPIC_API_KEY = "sk-ant"; process.env.REPASO_AI = "claude";
   assert.equal(handler.provider().name, "claude"); delete process.env.REPASO_AI; assert.equal(handler.provider().name, "gemini"); ok++;
-  console.log(`${ok}/13 comprobaciones correctas (gemini)`);
+  console.log(`${ok}/15 comprobaciones correctas (gemini)`);
 })().catch(e => { console.error("FAIL", e); process.exit(1); });

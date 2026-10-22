@@ -59,6 +59,8 @@ async function handler(req, res) {
   // Diagnóstico sin secretos: abre /api/claude en el navegador para ver qué IA encuentra el servidor.
   if (req.method === "GET") {
     const ai = provider();
+    // ?probar=1 → pregunta a cada modelo de Gemini con una petición mínima y dice cuál funciona.
+    if (ai?.name === "gemini" && /[?&]probar=1\b/.test(req.url || "")) return send(res, 200, { ia: "gemini", modelos: await gemini.probe({ key: ai.key }) });
     return send(res, 200, ai
       ? { ok: true, ia: ai.name, variable: ai.from, clave: ai.key.slice(0, 4) + "…" + ` (${ai.key.length} caracteres)`, codigo_de_acceso: !!process.env.REPASO_ACCESS_CODE }
       : { ok: false, ia: null, problema: "El servidor no ve ninguna clave. En Vercel → Settings → Environment Variables añade GEMINI_API_KEY marcando Production, guarda y haz Redeploy.", codigo_de_acceso: !!process.env.REPASO_ACCESS_CODE });

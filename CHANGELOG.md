@@ -1,5 +1,9 @@
 # Cambios
 
+## 4.4.2 — 22 oct 2026
+- Gemini: si Google pide esperar unos segundos (límite por minuto), el servidor espera y reintenta; si un modelo no tiene cupo gratuito, pasa al siguiente sin esperar.
+- `/api/claude?probar=1` prueba cada modelo de Gemini y dice cuál funciona con tu clave.
+
 ## 4.4.1 — 22 oct 2026
 - `/api/claude` acepta la clave de Google con otros nombres habituales (GOOGLE_API_KEY…) y quita espacios sobrantes.
 - Abrir `/api/claude` en el navegador dice qué IA ve el servidor, sin mostrar la clave.
