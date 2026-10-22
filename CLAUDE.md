@@ -15,7 +15,7 @@
 ## Antes de dar algo por terminado
 
 ```bash
-python3 test/e2e.py && python3 test/web_smoke.py && python3 test/web_accounts.py && node test/api_test.js && node test/migrate_test.js
+python3 test/e2e.py && python3 test/web_smoke.py && python3 test/web_accounts.py && node test/api_test.js && node test/migrate_test.js && node test/gemini_test.js
 ```
 
 Tiene que acabar en `N/N comprobaciones correctas` y sin errores de JavaScript. Si añades una función, añade su recorrido a `test/e2e.py`. Si llamas a una capacidad nueva de Claude, impleméntala también en `test/mock-claude.js`.
@@ -23,6 +23,8 @@ Tiene que acabar en `N/N comprobaciones correctas` y sin errores de JavaScript. 
 ## Versión web
 
 `web/claude-web.js` imita la interfaz `window.claude.use()` del artifact; si la app usa una capacidad nueva, añádela ahí también (o comprueba `WEB` en la app y escóndela). `dist/` se genera con `node scripts/build-web.js`: no se edita a mano ni se sube a git.
+
+IA de la web: `api/claude.js` usa Gemini (gratis, `GEMINI_API_KEY`) o Claude (`ANTHROPIC_API_KEY`, o `REPASO_AI=claude`). Responde siempre con el formato SSE de Claude: `lib/gemini.js` traduce en los dos sentidos, así que la app y el shim no saben qué IA hay detrás. En los textos de la app usa `AI_NAME`, no "Claude", cuando hables de la IA de la web.
 
 Cuentas: `account` solo existe en la web con base de datos (Neon). Lo de cuentas va en `Auth` (módulo 4) y en las pantallas de acceso; comprueba `Auth.real`, nunca `WEB`, para distinguir cuentas de verdad. En el servidor: `api/auth.js`, `api/docs.js` y `lib/`; toda consulta filtra por la usuaria de la sesión. Su recorrido se prueba en `test/web_accounts.py` con PostgreSQL real. Si cambias las tablas, actualiza `db/schema.sql` (que se pueda ejecutar más de una vez): `scripts/migrate.js` lo aplica en cada despliegue.
 

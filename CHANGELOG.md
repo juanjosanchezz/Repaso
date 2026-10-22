@@ -1,5 +1,11 @@
 # Cambios
 
+## 4.4 — 22 oct 2026
+- Versión web con **Gemini gratis** (nivel gratuito de Google, `GEMINI_API_KEY`): nadie paga nada. Claude sigue disponible con `ANTHROPIC_API_KEY` y `REPASO_AI=claude`.
+- `lib/gemini.js` traduce peticiones (texto, imágenes, herramientas con su firma) y respuestas en streaming al formato de Claude; si un modelo llega a su límite o no existe, prueba el siguiente gratuito.
+- Textos de la web con el nombre de la IA que se usa (privacidad, Personalizar, errores) y aviso claro al llegar al límite gratuito.
+- Pruebas: 13 de la traducción a Gemini.
+
 ## 4.3.1 — 22 oct 2026
 - Versión web: los errores de Claude ya no hablan de "tu cuenta de Claude" (en la web la paga el servidor). Dicen la causa real: falta la clave en Vercel, clave no válida, sin saldo, falta el código de acceso o sesión caducada.
 

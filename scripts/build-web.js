@@ -12,7 +12,8 @@ if (shim.includes("</script")) throw new Error("web/claude-web.js no puede conte
 // Cuentas de verdad: si hay base de datos (integración de Neon), la app usa /api/auth y /api/docs.
 // Al navegador no va ningún dato de la conexión; solo se le dice que hay cuentas.
 const { dbUrl } = require("../lib/db.js");
-const cfg = dbUrl() ? { accounts: true } : {};
+const ai = require("../api/claude.js").provider();
+const cfg = { ...(dbUrl() ? { accounts: true } : {}), ...(ai ? { ai: ai.name } : {}) };
 const cfgJs = "window.__REPASO_CONFIG__=" + JSON.stringify(cfg) + ";";
 
 const icon = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#ffe45c"/><text x="32" y="44" text-anchor="middle" font-family="Georgia,serif" font-size="34" fill="#17203a">Re</text></svg>');
@@ -41,4 +42,4 @@ ${app}
 const out = path.join(root, "dist");
 fs.mkdirSync(out, { recursive: true });
 fs.writeFileSync(path.join(out, "index.html"), html);
-console.log(`dist/index.html (${(html.length / 1024).toFixed(0)} KB) · cuentas: ${cfg.accounts ? "sí (base de datos)" : "no (datos en el navegador)"}`);
+console.log(`dist/index.html (${(html.length / 1024).toFixed(0)} KB) · cuentas: ${cfg.accounts ? "sí (base de datos)" : "no (datos en el navegador)"} · IA: ${cfg.ai === "gemini" ? "Gemini (gratis)" : cfg.ai === "claude" ? "Claude" : "sin clave"}`);

@@ -104,7 +104,7 @@ def main():
         tr = [c for c in calls if any(x.get("type") == "tool_result" for x in c["body"]["messages"][-1]["content"])]
         check("devuelve el resultado a Claude", tr and tr[-1]["body"]["messages"][-1]["content"][0]["content"] == "guardado")
         print("\n[web] Si falla el servidor, no habla de la cuenta de Claude de la alumna")
-        for mode, want in [("missing_key", "falta ANTHROPIC_API_KEY"), ("no_credit", "sin saldo de Claude")]:
+        for mode, want in [("missing_key", "falta GEMINI_API_KEY"), ("no_credit", "sin saldo de Claude")]:
             MODE["fail"] = mode; n = pg.locator(".msg").count()
             pg.fill("#chat-input", "Hola"); pg.press("#chat-input", "Enter")
             ok = wait_for(lambda: want in pg.inner_text("#r-chat-log"))

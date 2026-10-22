@@ -309,7 +309,7 @@
     codePrompt = new Promise(resolve => {
       const wrap = document.createElement("div");
       wrap.className = "sheet-wrap";
-      wrap.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="code-h"><div class="sheet-head"><div><h2 id="code-h">Código de acceso</h2><p class="small muted" style="margin-top:4px">${wrong ? "Ese código no es correcto." : "Para usar Claude en esta versión de Repaso necesitas el código que te dio quien te pasó la app. Solo te lo pedirá una vez."}</p></div></div>
+      wrap.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="code-h"><div class="sheet-head"><div><h2 id="code-h">Código de acceso</h2><p class="small muted" style="margin-top:4px">${wrong ? "Ese código no es correcto." : "Para usar la IA en esta versión de Repaso necesitas el código que te dio quien te pasó la app. Solo te lo pedirá una vez."}</p></div></div>
         <form style="display:flex;flex-direction:column;gap:14px"><div class="field"><label for="web-code">Código</label><input class="input" id="web-code" autocomplete="off" required></div>
         <div class="sheet-foot"><button class="btn" type="button" data-x="cancel">Ahora no</button><button class="btn primary" type="submit">Guardar</button></div></form></div>`;
       const done = v => { wrap.remove(); codePrompt = null; resolve(v); };
@@ -382,7 +382,7 @@
         else if (ev.delta.type === "input_json_delta") b.json += ev.delta.partial_json;
       }
       else if (ev.type === "message_delta") stop = ev.delta?.stop_reason || stop;
-      else if (ev.type === "error") throw err(ev.error?.type === "overloaded_error" ? "rate_limited" : "upstream_error", ev.error?.message || "Error de Claude");
+      else if (ev.type === "error") throw err(ev.error?.type === "overloaded_error" ? "rate_limited" : ev.error?.type === "refused" ? "refused" : "upstream_error", ev.error?.message || "Error de la IA");
     };
     try {
       for (;;) {
@@ -427,7 +427,7 @@
         break;
       }
     } catch (e) { if (text && e && typeof e === "object") e.text = text; throw e; }
-    if (!text.trim()) throw err("empty_completion", "Claude no ha escrito nada");
+    if (!text.trim()) throw err("empty_completion", "La IA no ha escrito nada");
     return { text, truncated, modelTierApplied: tier };
   }
   function parseJsonLoose(t) {

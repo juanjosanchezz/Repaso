@@ -771,6 +771,8 @@ async function usePlatform(){
 /** Preferencias de la usuaria con valores por defecto. */
 function prefs(){ const p=S.profile?.prefs||{}; return {...DEFAULT_PREFS, ...p, home:{...DEFAULT_PREFS.home, ...(p.home||{})}}; }
 function applyPrefs(p=prefs()){ const r=document.documentElement; r.dataset.accent=p.accent||"blue"; r.dataset.size=p.size||"normal"; }
+/** Nombre de la IA que prepara el material: en la web puede ser Gemini (lo decide el servidor). */
+const AI_NAME = window.__REPASO_CONFIG__?.ai === "gemini" ? "Gemini" : "Claude";
 const writeBlockedMsg = "No tienes permiso para guardar en esta app. Pide a quien te la pasó que te invite por email como Editor.";
 /** Avisos en Google Calendar: solo dentro de Claude (conector del propio usuario). */
 const calOK = () => !WEB;
@@ -1124,11 +1126,13 @@ const AI = {
     // En la web nadie tiene que conectar su cuenta de Claude: lo paga el servidor. Los fallos son de configuración o de conexión.
     if (WEB) Object.assign(m, {
       not_granted: e?.message==="Falta el código de acceso" ? "Falta el código de acceso. Pídeselo a quien te pasó Repaso y vuelve a intentarlo." : /sesión/i.test(e?.message||"") ? "Tu sesión ha caducado. Vuelve a entrar." : "No se pudo usar Claude. Recarga la página y vuelve a intentarlo.",
-      sampling_disabled:"Repaso no tiene configurada la clave de Claude. Avisa a quien la publica: falta ANTHROPIC_API_KEY en Vercel.",
-      server_key_invalid:"La clave de Claude de Repaso no es válida. Avisa a quien la publica para que la revise en Vercel.",
+      sampling_disabled:"Repaso no tiene configurada la clave de la IA. Avisa a quien la publica: falta GEMINI_API_KEY (o ANTHROPIC_API_KEY) en Vercel.",
+      server_key_invalid:"La clave de la IA de Repaso no es válida. Avisa a quien la publica para que la revise en Vercel.",
       no_credit:"Repaso se ha quedado sin saldo de Claude. Avisa a quien la publica para que recargue en console.anthropic.com.",
+      rate_limited: AI_NAME==="Gemini" ? "Se ha llegado al límite gratuito de la IA por ahora. Vuelve a probar en unos minutos (o mañana, si es el límite del día)." : "Has llegado al límite de uso de Claude por ahora. Prueba otra vez en un rato.",
+      refused:`${AI_NAME} no ha podido generar esto con este material. Prueba con otro tema o reformúlalo.`,
       session_expired:"Tu sesión ha caducado. Vuelve a entrar.",
-      upstream_error:"Ha fallado la conexión con Claude. Inténtalo de nuevo en un momento.",
+      upstream_error:`Ha fallado la conexión con ${AI_NAME}. Inténtalo de nuevo en un momento.`,
     });
     return m[e?.code] || (!e?.code && e?.message) || "Ha fallado la conexión con Claude. Inténtalo de nuevo.";
   },
@@ -1391,7 +1395,7 @@ function viewAuth(){
         : tab==="welcome" ? welcomePane(has) : tab==="login" ? loginPane(has) : tab==="forgot" ? forgotPane() : signupPane(has)}
       ${S.canWrite===false && !unavailable ? `<div class="notice warn">${ic("x")}<span>${writeBlockedMsg}</span></div>` : ""}
       ${S.authNotice ? `<div class="notice warn">${esc(S.authNotice)}</div>` : ""}
-      <p class="fine">${Auth.real?"Tus datos se guardan en tu cuenta y ninguna otra usuaria puede verlos. Para preparar el material, lo que usas se envía a Claude.":WEB?"Tu cuenta y tus datos se guardan en este navegador y no se envían a ningún otro sitio, salvo lo que mandas a Claude para preparar el material. Haz copias de seguridad desde Personalizar.":"Tu cuenta va ligada a tu sesión de Claude. Tus archivos, tareas y materiales son privados: no los ve nadie más, tampoco quien te compartió la app. Para generar material se usa tu propio plan de Claude."}</p>
+      <p class="fine">${Auth.real?`Tus datos se guardan en tu cuenta y ninguna otra usuaria puede verlos. Para preparar el material, lo que usas se envía a ${AI_NAME}.`:WEB?"Tu cuenta y tus datos se guardan en este navegador y no se envían a ningún otro sitio, salvo lo que mandas a Claude para preparar el material. Haz copias de seguridad desde Personalizar.":"Tu cuenta va ligada a tu sesión de Claude. Tus archivos, tareas y materiales son privados: no los ve nadie más, tampoco quien te compartió la app. Para generar material se usa tu propio plan de Claude."}</p>
     </section>
   </div>`;
 }
@@ -2129,7 +2133,7 @@ function openSettings(keep){
         ${S.memory.length?`<ul class="mem-list">${S.memory.map(m=>`<li><span>${esc(m.text)}</span><button type="button" class="icon-btn" data-action="mem-del" data-id="${m.id}" aria-label="Olvidar: ${esc(m.text)}">${ic("x")}</button></li>`).join("")}</ul>`:`<p class="small muted">Todavía nada.</p>`}
         <div class="row"><input class="input" id="mem-new" maxlength="300" placeholder="Algo que quieras que tenga en cuenta" style="flex:1 1 220px" aria-label="Nuevo recuerdo"><button type="button" class="btn sm" data-action="mem-add">${ic("plus")}Añadir</button></div></div>
       ${WEB?`<div class="set-sec"><h3>Copia de seguridad</h3><p class="small muted">${Auth.real?"Tus datos ya están guardados en tu cuenta. Si quieres, descarga una copia o recupera una que hiciste antes.":"En esta versión web tus datos viven solo en este navegador. Descarga una copia de vez en cuando y recupérala si cambias de móvil u ordenador."}</p><div class="row"><button type="button" class="btn sm" data-action="backup-export">${ic("download")}Descargar copia</button><label class="btn sm" for="backup-file">${ic("upload")}Recuperar copia</label><input type="file" id="backup-file" accept="application/json,.json" hidden data-change="backup-import"></div></div>`:""}
-      <div class="set-sec"><h3>Uso de Claude</h3><p class="small muted">${WEB?"En esta versión web, el uso de Claude lo paga quien publica la app. El modo ahorro reduce ese gasto.":"Repaso usa tu propia cuenta de Claude: funciona con el plan gratuito, dentro de sus límites, y con un plan de pago tienes mucho más margen. No hay forma de que sea ilimitado gratis."}</p>
+      <div class="set-sec"><h3>Uso de ${WEB?"la IA":"Claude"}</h3><p class="small muted">${WEB?(AI_NAME==="Gemini"?"Esta versión usa Gemini, de Google, en su nivel gratuito: no pagas nada. Hay un límite de uso al día para todas; si se llega, vuelve a funcionar en un rato o al día siguiente. El modo ahorro hace que dure más.":"En esta versión web, el uso de Claude lo paga quien publica la app. El modo ahorro reduce ese gasto."):"Repaso usa tu propia cuenta de Claude: funciona con el plan gratuito, dentro de sus límites, y con un plan de pago tienes mucho más margen. No hay forma de que sea ilimitado gratis."}</p>
         <label class="check"><input type="checkbox" id="pf-saver" data-pfpref="saver" ${S.pf.prefs.saver?"checked":""}><span><b>Modo ahorro</b><br>Usa un modelo más ligero en el chat, los tests y las flashcards (y uno intermedio en apuntes y exámenes), para que te dure más el uso.</span></label></div>
       <div class="sheet-foot"><button class="btn" type="button" data-action="logout" style="margin-right:auto">Cerrar sesión</button><button class="btn" type="button" data-action="close-sheet">Cancelar</button><button class="btn primary" type="submit">Guardar</button></div>
     </form>

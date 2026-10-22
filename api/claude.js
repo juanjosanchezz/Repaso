@@ -1,8 +1,11 @@
-/* Repaso · función de Vercel que hace de puente con la API de Claude.
-   La app (versión web) llama aquí; tu API key nunca llega al navegador.
+/* Repaso · función de Vercel que hace de puente con la IA (Gemini gratis o Claude).
+   La app (versión web) llama aquí; tu clave nunca llega al navegador. Responde siempre
+   con el formato de la API de Claude (lib/gemini.js traduce lo de Gemini).
 
    Variables de entorno (Vercel → Settings → Environment Variables):
-     ANTHROPIC_API_KEY      obligatoria. Tu clave de la API de Claude.
+     GEMINI_API_KEY         clave gratuita de Google (aistudio.google.com). Si está, se usa Gemini.
+     ANTHROPIC_API_KEY      clave de la API de Claude (de pago). Se usa si no hay GEMINI_API_KEY
+                            o si REPASO_AI=claude.
      REPASO_ACCESS_CODE     muy recomendable. Código que piden la app y este endpoint;
                             sin él, cualquiera con el enlace (o que se cree una cuenta)
                             gastaría de tu clave. Con cuentas, se pide una vez por cuenta.
@@ -15,6 +18,15 @@
 */
 const { enabled: accounts } = require("../lib/db.js");
 const { userFromReq } = require("../lib/auth.js");
+const gemini = require("../lib/gemini.js");
+
+/** Qué IA usar: Gemini si hay su clave (salvo REPASO_AI=claude); si no, Claude. */
+function provider(env = process.env) {
+  if (env.REPASO_AI === "claude" && env.ANTHROPIC_API_KEY) return { name: "claude", key: env.ANTHROPIC_API_KEY };
+  if (env.GEMINI_API_KEY) return { name: "gemini", key: env.GEMINI_API_KEY };
+  if (env.ANTHROPIC_API_KEY) return { name: "claude", key: env.ANTHROPIC_API_KEY };
+  return null;
+}
 
 const MODELS = {
   complex: process.env.REPASO_MODEL_COMPLEX || "claude-opus-5-5",
@@ -38,7 +50,7 @@ function validMessages(m) {
   return Array.isArray(m) && m.length > 0 && m.length <= 200 && m.every(x => x && (x.role === "user" || x.role === "assistant") && (typeof x.content === "string" || Array.isArray(x.content)));
 }
 
-module.exports = async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== "POST") { res.setHeader("allow", "POST"); return send(res, 405, { error: "method_not_allowed" }); }
   if (accounts()) {
     let user;
@@ -47,8 +59,9 @@ module.exports = async function handler(req, res) {
   }
   const code = process.env.REPASO_ACCESS_CODE;
   if (code && req.headers["x-repaso-code"] !== code) return send(res, 401, { error: "bad_code" });
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return send(res, 500, { error: "missing_key" });
+  const ai = provider();
+  if (!ai) return send(res, 500, { error: "missing_key" });
+  const key = ai.key;
 
   let body;
   try { body = await readBody(req); } catch { return send(res, 400, { error: "bad_json" }); }
@@ -57,6 +70,16 @@ module.exports = async function handler(req, res) {
 
   const ac = new AbortController();
   res.on("close", () => { if (!res.writableEnded) ac.abort(); });
+
+  if (ai.name === "gemini") {
+    let r;
+    try { r = await gemini.call({ key, messages, tools, maxTokens: Math.min(Number(body.max_tokens) || MAX_TOKENS, MAX_TOKENS), signal: ac.signal }); }
+    catch { if (ac.signal.aborted) return; return send(res, 502, { error: "upstream_unreachable" }); }
+    if (!r.res) return send(res, r.status, { error: r.error, detail: r.detail });
+    res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no", "x-repaso-model": r.model });
+    try { await gemini.pipe(r.res, chunk => res.write(chunk)); } catch { /* la usuaria canceló o se cortó la conexión */ }
+    return res.end();
+  }
 
   let upstream;
   try {
@@ -87,4 +110,6 @@ module.exports = async function handler(req, res) {
     for (;;) { const { value, done } = await reader.read(); if (done) break; res.write(Buffer.from(value)); }
   } catch { /* la usuaria canceló o se cortó la conexión */ }
   res.end();
-};
+}
+module.exports = handler;
+module.exports.provider = provider;

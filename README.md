@@ -24,7 +24,8 @@ App de estudio que funciona de dos formas: como **artifact de Claude** y como **
 ```
 src/repaso.html        La app completa (un único archivo, como exige el artifact)
 web/claude-web.js      Versión web: la misma interfaz de Claude en el navegador (IndexedDB, /api/claude, descargas)
-api/claude.js          Función de Vercel: puente con la API de Claude (tu clave nunca llega al navegador)
+api/claude.js          Función de Vercel: puente con la IA, Gemini gratis o Claude (tu clave nunca llega al navegador)
+lib/gemini.js          Traduce entre el formato de Claude que usa la app y la API de Gemini
 api/auth.js            Función de Vercel: cuentas (registro, entrar, salir, contraseña, borrar)
 api/docs.js            Función de Vercel: guardar y leer los documentos de la cuenta
 lib/                   db.js (conexión a Neon), auth.js (contraseñas y sesiones), http.js
@@ -50,13 +51,14 @@ La versión web tiene **cuentas de verdad**: cada persona se registra con email 
 
 1. En Vercel: **Add New → Project** e importa este repositorio. `vercel.json` ya dice cómo construirlo.
 2. **Storage → Neon** y conéctalo al proyecto. Nada más: en cada despliegue `scripts/migrate.js` crea o pone al día las tablas (`rp_users`, `rp_sessions`, `rp_docs`). No hay que configurar nada en Neon ni mandar correos.
-3. **Settings → Environment Variables**:
-   - `ANTHROPIC_API_KEY`: tu clave de la API de Claude (console.anthropic.com). **Obligatoria.**
-   - `REPASO_ACCESS_CODE`: un código que inventes y solo des a tus amigas. **Muy recomendable**: con cuentas, cualquiera podría registrarse y gastar de tu clave. Se pide una vez por cuenta.
-   - Opcionales: `REPASO_MODEL_COMPLEX`, `REPASO_MODEL_DEFAULT`, `REPASO_MODEL_QUICK` (por defecto `claude-opus-5-5`, `claude-sonnet-5-5` y `claude-haiku-5-5`) y `REPASO_MAX_TOKENS` (16000).
-4. **Deployments → ⋯ → Redeploy**. En **Deploy Logs** tienen que salir `Base de datos: tablas de Repaso listas.` y `cuentas: sí (base de datos)`.
+3. **La IA: Gemini gratis (recomendado) o Claude.** En **Settings → Environment Variables**:
+   - `GEMINI_API_KEY`: clave **gratuita** de Google. En **aistudio.google.com** → *Get API key* → *Create API key*. Sin tarjeta, así que nunca te cobra. Tiene un límite de uso al día (compartido por todas); si se llega, la app avisa y vuelve a funcionar más tarde. Si un modelo llega a su límite, se prueba otro gratuito.
+   - O, para más calidad pagando tú: `ANTHROPIC_API_KEY` (console.anthropic.com, prepago). Si están las dos, se usa Gemini salvo que pongas `REPASO_AI=claude`.
+   - `REPASO_ACCESS_CODE`: un código que inventes y solo des a tus amigas. **Muy recomendable**: sin él, cualquiera que se registre gastaría tu límite. Se pide una vez por cuenta.
+   - Opcionales: `REPASO_GEMINI_MODELS` (lista de modelos de Gemini a probar, por defecto `gemini-flash-latest,gemini-flash-lite-latest,…`); con Claude, `REPASO_MODEL_COMPLEX`, `REPASO_MODEL_DEFAULT`, `REPASO_MODEL_QUICK`; `REPASO_MAX_TOKENS` (16000).
+4. **Deployments → ⋯ → Redeploy**. En **Deploy Logs** tienen que salir `Base de datos: tablas de Repaso listas.` y `cuentas: sí (base de datos) · IA: Gemini (gratis)`.
 
-Pon un límite de gasto mensual en console.anthropic.com: el uso de Claude se cobra en **tu** cuenta de la API.
+Si usas Claude, pon un límite de gasto mensual en console.anthropic.com: se cobra en **tu** cuenta de la API. Con Gemini gratis no hay cobro. En el nivel gratuito, Google puede usar lo que se envía para mejorar sus productos.
 
 ### Si alguien olvida su contraseña
 
@@ -98,6 +100,7 @@ python3 test/e2e.py          # artifact: 171 comprobaciones (E2E_OUT=carpeta par
 python3 test/web_smoke.py    # versión web sin cuentas: 15 comprobaciones
 python3 test/web_accounts.py # cuentas con PostgreSQL real: 48 comprobaciones (necesita PostgreSQL instalado)
 node test/api_test.js        # funciones de Vercel: 18 comprobaciones
+node test/gemini_test.js     # traducción a Gemini: 13 comprobaciones
 node test/migrate_test.js    # migración de la base de datos: 7 comprobaciones
 ```
 
