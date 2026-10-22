@@ -352,6 +352,9 @@
     if (status === 413) return err("prompt_too_large", "Demasiado contenido");
     if (status === 429) return err("rate_limited", "Demasiadas peticiones");
     if (status === 500 && body?.error === "missing_key") return err("sampling_disabled", "Falta ANTHROPIC_API_KEY en el servidor");
+    const d = String(body?.detail || "");
+    if (status === 401 || /authentication_error|invalid x-api-key/i.test(d)) return err("server_key_invalid", "La clave de Claude del servidor no es válida");
+    if (/credit balance|billing|insufficient/i.test(d)) return err("no_credit", "Sin saldo en la API de Claude");
     return err("upstream_error", body?.detail || body?.error || "Error " + status);
   }
   /** Una ronda: POST a /api/claude y lectura del stream SSE de la API de Claude. */

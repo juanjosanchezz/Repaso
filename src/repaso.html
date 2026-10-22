@@ -1121,6 +1121,15 @@ const AI = {
       image_rejected:"No se pudo leer esa imagen. Prueba con otra foto más nítida.",
       cancelled:"Cancelado.",
     };
+    // En la web nadie tiene que conectar su cuenta de Claude: lo paga el servidor. Los fallos son de configuración o de conexión.
+    if (WEB) Object.assign(m, {
+      not_granted: e?.message==="Falta el código de acceso" ? "Falta el código de acceso. Pídeselo a quien te pasó Repaso y vuelve a intentarlo." : /sesión/i.test(e?.message||"") ? "Tu sesión ha caducado. Vuelve a entrar." : "No se pudo usar Claude. Recarga la página y vuelve a intentarlo.",
+      sampling_disabled:"Repaso no tiene configurada la clave de Claude. Avisa a quien la publica: falta ANTHROPIC_API_KEY en Vercel.",
+      server_key_invalid:"La clave de Claude de Repaso no es válida. Avisa a quien la publica para que la revise en Vercel.",
+      no_credit:"Repaso se ha quedado sin saldo de Claude. Avisa a quien la publica para que recargue en console.anthropic.com.",
+      session_expired:"Tu sesión ha caducado. Vuelve a entrar.",
+      upstream_error:"Ha fallado la conexión con Claude. Inténtalo de nuevo en un momento.",
+    });
     return m[e?.code] || (!e?.code && e?.message) || "Ha fallado la conexión con Claude. Inténtalo de nuevo.";
   },
   /** Modelo según la tarea. "complex" para lo que más importa (apuntes, exámenes, correcciones); el modo ahorro baja un nivel. */

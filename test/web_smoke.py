@@ -29,11 +29,14 @@ def sse(blocks, stop="end_turn"):
     return "".join(f"event: {e['type']}\ndata: {json.dumps(e)}\n\n" for e in ev)
 
 calls = []
+MODE = {"fail": None}
 def api(route):
     req = route.request
     body = json.loads(req.post_data or "{}")
     calls.append({"code": req.headers.get("x-repaso-code"), "body": body})
     if req.headers.get("x-repaso-code") != "julia2026": return route.fulfill(status=401, content_type="application/json", body='{"error":"bad_code"}')
+    if MODE["fail"] == "missing_key": return route.fulfill(status=500, content_type="application/json", body='{"error":"missing_key"}')
+    if MODE["fail"] == "no_credit": return route.fulfill(status=400, content_type="application/json", body='{"error":"upstream","detail":"Your credit balance is too low to access the Anthropic API."}')
     msgs = body["messages"]; last = msgs[-1]
     text = " ".join(c.get("text", "") for c in last["content"] if isinstance(c, dict))
     if any(c.get("type") == "tool_result" for c in last["content"]):
@@ -62,7 +65,7 @@ def main():
         ctx.route("**/*", route)
         pg = ctx.new_page(); errors = []
         pg.on("pageerror", lambda e: errors.append(str(e)))
-        pg.on("console", lambda m: errors.append(m.text) if m.type == "error" and "401" not in m.text else None)  # el 401 antes del código es esperado
+        pg.on("console", lambda m: errors.append(m.text) if m.type == "error" and not any(c in m.text for c in ("401", "400", "500")) else None)  # el 401 antes del código es esperado
         W = lambda ms=250: pg.wait_for_timeout(ms)
         def click(sel, i=0): pg.locator(sel).nth(i).click(); W(150)
         def wait_for(fn, t=6000):
@@ -100,6 +103,13 @@ def main():
         check("ejecuta la herramienta y sigue", wait_for(lambda: "Recordado: Le cuesta Kant" in pg.inner_text("#r-chat-log") and "Hecho: lo he apuntado" in pg.inner_text("#r-chat-log")))
         tr = [c for c in calls if any(x.get("type") == "tool_result" for x in c["body"]["messages"][-1]["content"])]
         check("devuelve el resultado a Claude", tr and tr[-1]["body"]["messages"][-1]["content"][0]["content"] == "guardado")
+        print("\n[web] Si falla el servidor, no habla de la cuenta de Claude de la alumna")
+        for mode, want in [("missing_key", "falta ANTHROPIC_API_KEY"), ("no_credit", "sin saldo de Claude")]:
+            MODE["fail"] = mode; n = pg.locator(".msg").count()
+            pg.fill("#chat-input", "Hola"); pg.press("#chat-input", "Enter")
+            ok = wait_for(lambda: want in pg.inner_text("#r-chat-log"))
+            check(f"{mode}: explica la causa real", ok and "tu cuenta" not in pg.inner_text("#r-chat-log").lower() and "permiso" not in pg.inner_text("#r-chat-log").lower(), pg.inner_text("#r-chat-log")[-300:])
+        MODE["fail"] = None
         print("\n[web] Copia de seguridad (descarga real)")
         click('[data-action=settings]')
         with pg.expect_download() as d: click('[data-action=backup-export]')

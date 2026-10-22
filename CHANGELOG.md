@@ -1,5 +1,8 @@
 # Cambios
 
+## 4.3.1 — 22 oct 2026
+- Versión web: los errores de Claude ya no hablan de "tu cuenta de Claude" (en la web la paga el servidor). Dicen la causa real: falta la clave en Vercel, clave no válida, sin saldo, falta el código de acceso o sesión caducada.
+
 ## 4.3 — 21 oct 2026
 - Cuentas con **Neon** en lugar de Supabase: basta con conectar Neon en Vercel y desplegar. Sin correos de confirmación ni ajustes fuera de Vercel.
 - Funciones propias `/api/auth` (registro, entrar, salir, cambiar contraseña, borrar cuenta) y `/api/docs` (documentos de la cuenta). Contraseñas con scrypt; sesiones con token cuyo hash se guarda en la base de datos.
