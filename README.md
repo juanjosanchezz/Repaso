@@ -55,6 +55,7 @@ La versión web tiene **cuentas de verdad**: cada persona se registra con email 
    - `GEMINI_API_KEY`: clave **gratuita** de Google. En **aistudio.google.com** → *Get API key* → *Create API key*. Sin tarjeta, así que nunca te cobra. Tiene un límite de uso al día (compartido por todas); si se llega, la app avisa y vuelve a funcionar más tarde. Si un modelo llega a su límite, se prueba otro gratuito.
    - O, para más calidad pagando tú: `ANTHROPIC_API_KEY` (console.anthropic.com, prepago). Si están las dos, se usa Gemini salvo que pongas `REPASO_AI=claude`.
    - `REPASO_ACCESS_CODE`: un código que inventes y solo des a tus amigas. **Muy recomendable**: sin él, cualquiera que se registre gastaría tu límite. Se pide una vez por cuenta.
+   - `REPASO_GEMINI_MODE`: `volumen` (por defecto: primero Gemma, con mucho más cupo diario; Flash de respaldo y para el chat que apunta cosas) o `calidad` (primero Flash).
    - Opcionales: `REPASO_GEMINI_MODELS` (lista de modelos de Gemini a probar, por defecto `gemini-flash-latest,gemini-flash-lite-latest,…`); con Claude, `REPASO_MODEL_COMPLEX`, `REPASO_MODEL_DEFAULT`, `REPASO_MODEL_QUICK`; `REPASO_MAX_TOKENS` (16000).
 4. **Deployments → ⋯ → Redeploy**. En **Deploy Logs** tienen que salir `Base de datos: tablas de Repaso listas.` y `cuentas: sí (base de datos) · IA: Gemini (gratis)`.
 

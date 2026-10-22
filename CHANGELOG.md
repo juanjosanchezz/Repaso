@@ -1,6 +1,7 @@
 # Cambios
 
 ## 4.4.3 — 22 oct 2026
+- Modo "volumen" por defecto: Gemma primero (mucho más cupo diario) en todo lo que no usa herramientas; Flash de respaldo y en el chat que apunta exámenes y tareas. `REPASO_GEMINI_MODE=calidad` para lo contrario.
 - IA gratuita sin errores por el límite por minuto: la app avisa ("necesita unos segundos, sigue sola") y reintenta. Si es el límite del día, lo explica.
 - Gemini según la tarea: chat, tests y flashcards con Flash-Lite; apuntes, exámenes y comentarios con Flash. Cada uno tiene su propio cupo. Gemma como último recurso (sin herramientas).
 - El material que se manda a la IA se limpia (números de página, cabeceras y pies repetidos, palabras partidas) sin perder contenido. Si hay que recortar, se cogen trozos de todo el archivo, no solo el principio.

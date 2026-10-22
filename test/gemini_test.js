@@ -50,7 +50,7 @@ const events = r => r.chunks.join("").split("\n\n").filter(Boolean).map(b => JSO
   let n = 0; const t0 = Date.now();
   const okBody = () => ({ ok: true, status: 200, body: sseBody([{ candidates: [{ content: { parts: [{ text: "ya" }] }, finishReason: "STOP" }] }]) });
   const g2 = await G.call({ key: "k", messages: [{ role: "user", content: "x" }], maxTokens: 10, fetchImpl: async () => (++n === 1 ? { ok: false, status: 429, text: async () => '{"error":{"details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"1s"}]}}' } : okBody()) });
-  assert.ok(g2.res); assert.equal(n, 2); assert.ok(Date.now() - t0 >= 1000); assert.equal(g2.model, "gemini-flash-latest"); ok++;
+  assert.ok(g2.res); assert.equal(n, 2); assert.ok(Date.now() - t0 >= 1000); assert.equal(g2.model, "gemma-3-27b-it"); ok++;
   const pr = await G.probe({ key: "k", fetchImpl: async u => (u.includes("flash-latest") ? { ok: false, status: 429, text: async () => '{"error":{"message":"limit: 0"}}' } : { ok: true, status: 200, text: async () => "{}" }) });
   assert.equal(pr[0].estado, "sin cupo gratuito (o agotado hoy)"); assert.equal(pr[1].estado, "funciona"); ok++;
   global.fetch = async () => ({ ok: false, status: 400, text: async () => '{"error":{"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT"}}' });
@@ -60,7 +60,8 @@ const events = r => r.chunks.join("").split("\n\n").filter(Boolean).map(b => JSO
   global.fetch = async () => ({ ok: true, status: 200, body: sseBody([{ candidates: [{ content: { parts: [{ text: "corta" }] }, finishReason: "MAX_TOKENS" }] }]) });
   r = res(); await handler(req({ messages: [{ role: "user", content: "hola" }] }), r); assert.equal(events(r).find(e => e.type === "message_delta").delta.stop_reason, "max_tokens"); ok++;
 
-  assert.equal(G.modelsFor("quick")[0], "gemini-flash-lite-latest"); assert.equal(G.modelsFor("complex")[0], "gemini-flash-latest"); ok++;
+  assert.equal(G.modelsFor("quick", true)[0], "gemini-flash-lite-latest"); assert.equal(G.modelsFor("complex", true)[0], "gemini-flash-latest");
+  assert.equal(G.modelsFor("complex")[0], "gemma-3-27b-it"); process.env.REPASO_GEMINI_MODE = "calidad"; assert.equal(G.modelsFor("complex")[0], "gemini-flash-latest"); delete process.env.REPASO_GEMINI_MODE; ok++;
   // REPASO_AI=claude con las dos claves → Claude.
   process.env.ANTHROPIC_API_KEY = "sk-ant"; process.env.REPASO_AI = "claude";
   assert.equal(handler.provider().name, "claude"); delete process.env.REPASO_AI; assert.equal(handler.provider().name, "gemini"); ok++;
